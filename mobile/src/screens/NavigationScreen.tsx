@@ -26,6 +26,7 @@ import {
   TYPE_LABEL,
 } from "../enforcement";
 import { saveAlertPoints } from "../storage";
+import { IS_EXPO_GO } from "../runtime";
 import { COLORS, commonStyles } from "../theme";
 import type { Coordinates, EnforcementPoint } from "../types";
 
@@ -80,9 +81,13 @@ export function NavigationScreen() {
   }, [alertIfNeeded]);
 
   useEffect(() => {
-    void Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
-      .then(setBackgroundEnabled)
-      .catch(() => setBackgroundEnabled(false));
+    if (IS_EXPO_GO) {
+      setBackgroundEnabled(false);
+    } else {
+      void Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
+        .then(setBackgroundEnabled)
+        .catch(() => setBackgroundEnabled(false));
+    }
     void Location.getLastKnownPositionAsync().then((location) => {
       if (location) void handleLocation(location);
     });
@@ -126,6 +131,13 @@ export function NavigationScreen() {
   };
 
   const requestBackgroundTracking = () => {
+    if (IS_EXPO_GO) {
+      Alert.alert(
+        "Expo Go 測試限制",
+        "Expo Go 不支援 iPhone 背景定位；目前可以測試前景定位、地圖、語音與科技執法提醒。正式開發版會保留背景安全提醒。",
+      );
+      return;
+    }
     Alert.alert(
       "背景安全提醒",
       "只有你主動開啟行車提醒時才會使用背景定位。位置只在手機上比對，不會寫入訂單或上傳伺服器；持續 GPS 會增加耗電。",
@@ -172,7 +184,7 @@ export function NavigationScreen() {
   const stopTracking = async () => {
     locationSubscriptionRef.current?.remove();
     locationSubscriptionRef.current = null;
-    if (await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
+    if (!IS_EXPO_GO && await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
       await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     }
     setTracking(false);
@@ -282,7 +294,9 @@ export function NavigationScreen() {
           <Text style={commonStyles.primaryButtonText}>{tracking ? "停止所有提醒" : "開始前景安全提醒"}</Text>
         </Pressable>
         <Pressable onPress={requestBackgroundTracking} style={commonStyles.secondaryButton}>
-          <Text style={commonStyles.secondaryButtonText}>{backgroundEnabled ? "背景提醒已啟用" : "另行允許背景提醒"}</Text>
+          <Text style={commonStyles.secondaryButtonText}>
+            {IS_EXPO_GO ? "背景提醒（正式版功能）" : backgroundEnabled ? "背景提醒已啟用" : "另行允許背景提醒"}
+          </Text>
         </Pressable>
         <Pressable onPress={() => setVoiceEnabled((value) => !value)} style={styles.inlineToggle}>
           <Text style={styles.inlineToggleLabel}>語音＋震動</Text>

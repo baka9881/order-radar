@@ -12,6 +12,7 @@ import { NavigationScreen } from "./src/screens/NavigationScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { deleteMarketContributions } from "./src/market-data";
+import { IS_EXPO_GO } from "./src/runtime";
 import {
   clearLocalData,
   DATA_PROGRAM_CONSENT_VERSION,
@@ -120,7 +121,7 @@ export default function App() {
   };
 
   const clearEverything = async () => {
-    if (await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
+    if (!IS_EXPO_GO && await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
       await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     }
     await Notifications.cancelAllScheduledNotificationsAsync();
