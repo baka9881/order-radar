@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
+async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request("http://localhost/", {
+    new Request(`http://localhost${path}`, {
       headers: { accept: "text/html" },
     }),
     {
@@ -42,6 +42,26 @@ test("server-renders the order calculator", async () => {
   assert.match(html, /Google 地圖導航/);
   assert.match(html, /不包含流動執法/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
+});
+
+test("publishes App Store privacy, terms, and support pages", async () => {
+  const [privacyResponse, termsResponse, supportResponse] = await Promise.all([
+    render("/privacy"),
+    render("/terms"),
+    render("/support"),
+  ]);
+  const [privacy, terms, support] = await Promise.all([
+    privacyResponse.text(),
+    termsResponse.text(),
+    supportResponse.text(),
+  ]);
+
+  assert.equal(privacyResponse.status, 200);
+  assert.equal(termsResponse.status, 200);
+  assert.equal(supportResponse.status, 200);
+  assert.match(privacy, /座標在手機本機與離線設備資料比對/);
+  assert.match(terms, /不是緊急救援/);
+  assert.match(support, /資料與帳號/);
 });
 
 test("uses official fixed-enforcement datasets and publishes their coverage", async () => {

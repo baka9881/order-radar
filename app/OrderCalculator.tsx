@@ -798,6 +798,9 @@ export function OrderCalculator() {
           <span>92 油錢 {result.fuelPerKm.toFixed(2)} 元 / km · 官方油耗 44.8 km/L</span>
         </div>
         <div className="source-links">
+          <a href="/privacy">隱私權</a>
+          <a href="/terms">使用條款</a>
+          <a href="/support">支援</a>
           <a href="https://www.yamaha-motor.com.tw/news/news-202509-cygnus-x" target="_blank" rel="noreferrer">Yamaha 規格</a>
           <a href="https://www.cpc.com.tw/" target="_blank" rel="noreferrer">中油牌價</a>
           <a href="https://www.uber.com/tw/zh-tw/blog/delivery-partner-start-trips/" target="_blank" rel="noreferrer">新版派單卡</a>

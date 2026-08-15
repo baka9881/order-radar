@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "接單雷達",
+    "slug": "order-radar-tw",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/app-icon-rgb.png",
+    "scheme": "orderradar",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#07110d",
+    "ios": {
+      "bundleIdentifier": "com.baka0406.orderradar",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "接單雷達需要定位來顯示附近公開執法設備，並在行車提醒開啟時比對距離。",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "只有你主動啟用背景安全提醒時，接單雷達才會在背景使用定位；位置只在手機上比對，不會儲存行程。"
+      }
+    },
+    "android": {
+      "package": "com.baka0406.orderradar",
+      "adaptiveIcon": {
+        "backgroundColor": "#07110d",
+        "foregroundImage": "./assets/app-icon-rgb.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "接單雷達需要定位來顯示附近公開執法設備，並在行車提醒開啟時比對距離。",
+          "locationAlwaysAndWhenInUsePermission": "只有你主動啟用背景安全提醒時，接單雷達才會在背景使用定位；位置只在手機上比對，不會儲存行程。",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-notifications",
+      "expo-dev-client",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#07110d",
+          "image": "./assets/app-icon-rgb.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

@@ -1,8 +1,11 @@
-# vinext-starter
+# 接單雷達
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+臺灣外送員的接單成本試算、安全導航與政府公開固定執法設備提醒工具。
+
+專案包含兩個產品表面：
+
+- 根目錄：以 vinext／Cloudflare Workers 執行的網站、API、雲端訂單及回饋。
+- `mobile/`：Expo SDK 57／React Native iOS App，使用 Apple Maps、裝置內資料及 EAS 雲端建置。
 
 ## Prerequisites
 
@@ -16,15 +19,27 @@ npm run dev
 npm run build
 ```
 
+手機 App：
+
+```bash
+cd mobile
+npm install
+npm run validate
+npm start
+```
+
+背景定位必須使用 EAS development build 安裝到真實 iPhone，無法只靠 Expo Go 驗證。完整步驟見 `mobile/README.md` 與 `mobile/APP_STORE_CHECKLIST.md`。
+
 This starter does not use `wrangler.jsonc`.
 
-## Included Shape
+## Website Architecture
 
 - edit site code under `app/`
 - `.openai/hosting.json` declares optional Sites D1 and R2 bindings
 - `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
+- `db/schema.ts` defines profiles, orders, and feedback storage
+- `app/api/enforcement` aggregates official fixed-enforcement datasets
+- `app/privacy`, `app/terms`, and `app/support` contain App Store policy surfaces
 - `drizzle.config.ts` supports local migration generation when needed
 
 ## Workspace Auth Headers
@@ -91,8 +106,9 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 - `npm run dev`: start local development
 - `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
+- `npm test`: build the website and verify rendered product routes
 - `npm run db:generate`: generate Drizzle migrations after schema changes
+- `npm run data:mobile`: refresh the mobile offline enforcement snapshot while the local website API is running
 
 ## Learn More
 
