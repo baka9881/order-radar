@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://order-radar-tw.baka0406.chatgpt.site"),
   title: "接單雷達",
-  description: "為勁戰七代 125 ABS 設計的外送訂單收益試算工具。",
+  description: "台灣外送員的接單判斷、真實淨利與營運分析工具。",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -24,6 +25,27 @@ export const metadata: Metadata = {
   icons: {
     icon: "/icon-192.png",
     apple: "/icon-180.png",
+  },
+  openGraph: {
+    title: "接單雷達｜真實淨利，一眼看懂",
+    description: "把金額、距離、時間與車輛成本算清楚，判斷每張單值不值得接。",
+    siteName: "接單雷達",
+    locale: "zh_TW",
+    type: "website",
+    images: [
+      {
+        url: "/og.png",
+        width: 1728,
+        height: 909,
+        alt: "接單雷達，真實淨利一眼看懂",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "接單雷達｜真實淨利，一眼看懂",
+    description: "台灣外送員的接單判斷與淨利分析工具。",
+    images: ["/og.png"],
   },
 };
 

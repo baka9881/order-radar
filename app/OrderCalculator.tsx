@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Signal = "green" | "yellow" | "red";
 
@@ -27,6 +27,16 @@ type HistoryItem = {
   fullHourly: number;
   perKm: number;
 };
+
+type AccountState = {
+  user: {
+    displayName: string;
+    email: string;
+  };
+  plan: "free" | "pro";
+};
+
+type FeedbackCategory = "feature" | "problem" | "pro_interest";
 
 const DEFAULT_SETTINGS: CalculatorSettings = {
   fuelPrice: 30.5,
@@ -73,33 +83,92 @@ export function OrderCalculator() {
   const [parseMessage, setParseMessage] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [account, setAccount] = useState<AccountState | null>(null);
+  const [accountChecked, setAccountChecked] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
+  const [feedbackCategory, setFeedbackCategory] = useState<FeedbackCategory>("feature");
+  const [feedbackEmail, setFeedbackEmail] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [feedbackSending, setFeedbackSending] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
-  useEffect(() => {
+  const hydrateAccount = useCallback(async (localHistory: HistoryItem[]) => {
     try {
-      const savedSettings = window.localStorage.getItem("order-radar-settings");
-      const savedHistory = window.localStorage.getItem("order-radar-history");
-      if (savedSettings) {
-        setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) });
+      const accountResponse = await fetch("/api/me", { headers: { accept: "application/json" } });
+      if (!accountResponse.ok) return;
+
+      const accountData = (await accountResponse.json()) as AccountState;
+      setAccount(accountData);
+      setFeedbackEmail(accountData.user.email);
+
+      const ordersResponse = await fetch("/api/orders", { headers: { accept: "application/json" } });
+      if (!ordersResponse.ok) return;
+
+      const cloudData = (await ordersResponse.json()) as { orders?: HistoryItem[] };
+      const byId = new Map<string, HistoryItem>();
+      [...(cloudData.orders ?? []), ...localHistory].forEach((item) => byId.set(item.id, item));
+      const merged = [...byId.values()]
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, accountData.plan === "pro" ? 500 : 30);
+
+      setHistory(merged);
+      window.localStorage.setItem("order-radar-history", JSON.stringify(merged));
+
+      if (localHistory.length) {
+        await Promise.allSettled(
+          localHistory.map((item) =>
+            fetch("/api/orders", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(item),
+            }),
+          ),
+        );
       }
-      if (savedHistory) setHistory(JSON.parse(savedHistory));
-
-      const query = new URLSearchParams(window.location.search);
-      const queryAmount = Number(query.get("amount"));
-      const queryDistance = Number(query.get("distance") ?? query.get("km"));
-      const queryMinutes = Number(query.get("minutes") ?? query.get("time"));
-      if (queryAmount > 0) setAmount(queryAmount);
-      if (queryDistance > 0) setDistance(queryDistance);
-      if (queryMinutes > 0) setMinutes(queryMinutes);
+      setSyncMessage("已連結雲端紀錄");
     } catch {
-      // Keep defaults when local browser data is unavailable.
+      setSyncMessage("目前使用裝置內紀錄");
+    } finally {
+      setAccountChecked(true);
     }
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-    }
-    setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      let localHistory: HistoryItem[] = [];
+      try {
+        const savedSettings = window.localStorage.getItem("order-radar-settings");
+        const savedHistory = window.localStorage.getItem("order-radar-history");
+        if (savedSettings) {
+          setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) });
+        }
+        if (savedHistory) {
+          localHistory = JSON.parse(savedHistory) as HistoryItem[];
+          setHistory(localHistory);
+        }
+
+        const query = new URLSearchParams(window.location.search);
+        const queryAmount = Number(query.get("amount"));
+        const queryDistance = Number(query.get("distance") ?? query.get("km"));
+        const queryMinutes = Number(query.get("minutes") ?? query.get("time"));
+        if (queryAmount > 0) setAmount(queryAmount);
+        if (queryDistance > 0) setDistance(queryDistance);
+        if (queryMinutes > 0) setMinutes(queryMinutes);
+      } catch {
+        // Keep defaults when local browser data is unavailable.
+      }
+
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      }
+      void hydrateAccount(localHistory);
+      setHydrated(true);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [hydrateAccount]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -149,6 +218,34 @@ export function OrderCalculator() {
     };
   }, [amount, distance, minutes, extraWait, returnRisk, settings]);
 
+  const businessSummary = useMemo(() => {
+    const now = new Date();
+    const monthly = history.filter((item) => {
+      const date = new Date(item.createdAt);
+      return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    });
+    const totals = monthly.reduce(
+      (summary, item) => {
+        const effectiveDistance = item.distance * (item.returnRisk ? 1.3 : 1);
+        const fullCost = effectiveDistance * settings.fullCostPerKm;
+        summary.revenue += item.amount;
+        summary.net += item.amount - fullCost;
+        summary.distance += effectiveDistance;
+        summary.minutes += item.minutes + item.extraWait;
+        summary[item.signal] += 1;
+        return summary;
+      },
+      { revenue: 0, net: 0, distance: 0, minutes: 0, green: 0, yellow: 0, red: 0 },
+    );
+    const count = monthly.length;
+    return {
+      ...totals,
+      count,
+      hourly: totals.minutes > 0 ? (totals.net * 60) / totals.minutes : 0,
+      greenRate: count > 0 ? (totals.green / count) * 100 : 0,
+    };
+  }, [history, settings.fullCostPerKm]);
+
   const parseOfferText = (input: string) => {
     const amountMatch = input.match(/(?:NT\s*)?\$\s*([\d,]+(?:\.\d+)?)/i);
     const timeMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:分鐘|min)/i);
@@ -175,7 +272,7 @@ export function OrderCalculator() {
     }
   };
 
-  const saveResult = () => {
+  const saveResult = async () => {
     const item: HistoryItem = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       createdAt: new Date().toISOString(),
@@ -188,16 +285,68 @@ export function OrderCalculator() {
       fullHourly: result.fullHourly,
       perKm: result.perKm,
     };
-    const next = [item, ...history].slice(0, 20);
+    const historyLimit = account?.plan === "pro" ? 500 : 30;
+    const next = [item, ...history].slice(0, historyLimit);
     setHistory(next);
     window.localStorage.setItem("order-radar-history", JSON.stringify(next));
     setHistoryOpen(true);
+
+    if (account) {
+      try {
+        const response = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(item),
+        });
+        setSyncMessage(response.ok ? "這筆已同步" : "這筆先存在裝置內");
+      } catch {
+        setSyncMessage("這筆先存在裝置內");
+      }
+    }
   };
 
-  const removeHistoryItem = (id: string) => {
+  const removeHistoryItem = async (id: string) => {
     const next = history.filter((item) => item.id !== id);
     setHistory(next);
     window.localStorage.setItem("order-radar-history", JSON.stringify(next));
+    if (account) {
+      await fetch(`/api/orders?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(
+        () => undefined,
+      );
+    }
+  };
+
+  const openProInterest = () => {
+    setFeedbackCategory("pro_interest");
+    setFeedbackMessage("我想試用 Pro，最需要的功能是：");
+    setFeedbackOpen(true);
+    window.setTimeout(() => document.querySelector("#feedback")?.scrollIntoView(), 0);
+  };
+
+  const submitFeedback = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFeedbackSending(true);
+    setFeedbackStatus("");
+    try {
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: feedbackEmail,
+          category: feedbackCategory,
+          message: feedbackMessage,
+          website: "",
+        }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "暫時無法送出");
+      setFeedbackStatus("收到，謝謝你幫忙決定下一版。");
+      setFeedbackMessage("");
+    } catch (error) {
+      setFeedbackStatus(error instanceof Error ? error.message : "暫時無法送出");
+    } finally {
+      setFeedbackSending(false);
+    }
   };
 
   const updateSetting = (key: keyof CalculatorSettings, value: number) => {
@@ -222,9 +371,22 @@ export function OrderCalculator() {
             <small>勁戰七代 125 ABS · 92 無鉛</small>
           </span>
         </a>
-        <button className="icon-button" type="button" onClick={() => setSettingsOpen(!settingsOpen)}>
-          {settingsOpen ? "完成" : "設定"}
-        </button>
+        <div className="topbar-actions">
+          {account ? (
+            <div className="account-chip" title={account.user.email}>
+              <span>{account.plan.toUpperCase()}</span>
+              <strong>{account.user.displayName}</strong>
+              <a href="/signout-with-chatgpt?return_to=%2F">登出</a>
+            </div>
+          ) : (
+            <a className="account-button" href="/signin-with-chatgpt?return_to=%2F">
+              {accountChecked ? "登入同步" : "確認帳號…"}
+            </a>
+          )}
+          <button className="icon-button" type="button" onClick={() => setSettingsOpen(!settingsOpen)}>
+            {settingsOpen ? "完成" : "設定"}
+          </button>
+        </div>
       </header>
 
       <section className={`decision-card signal-${result.signal}`} id="top">
@@ -384,6 +546,89 @@ export function OrderCalculator() {
         </button>
       </div>
 
+      <section className="dashboard-panel" aria-labelledby="dashboard-title">
+        <div className="section-heading dashboard-heading">
+          <div>
+            <span className="step-label">本月營運</span>
+            <h2 id="dashboard-title">你真正留下多少</h2>
+          </div>
+          <div className={`sync-badge ${account ? "is-cloud" : ""}`}>
+            {account ? syncMessage || "雲端同步" : "裝置內紀錄"}
+          </div>
+        </div>
+
+        <div className="business-grid">
+          <article className="business-primary">
+            <span>完整成本後淨利</span>
+            <strong>${formatNumber(businessSummary.net)}</strong>
+            <small>營收 ${formatNumber(businessSummary.revenue)} · {businessSummary.count} 筆</small>
+          </article>
+          <article>
+            <span>淨時薪</span>
+            <strong>{formatNumber(businessSummary.hourly)}</strong>
+            <small>元 / hr</small>
+          </article>
+          <article>
+            <span>有效里程</span>
+            <strong>{formatNumber(businessSummary.distance, 1)}</strong>
+            <small>公里</small>
+          </article>
+        </div>
+
+        <div className="signal-breakdown" aria-label="本月訂單燈號比例">
+          {(["green", "yellow", "red"] as Signal[]).map((signal) => {
+            const value = businessSummary[signal];
+            const width = businessSummary.count ? (value / businessSummary.count) * 100 : 0;
+            return (
+              <div className={`signal-row signal-${signal}`} key={signal}>
+                <span>{STATUS[signal].label}</span>
+                <div><i style={{ width: `${width}%` }} /></div>
+                <strong>{value}</strong>
+              </div>
+            );
+          })}
+        </div>
+        <p className="dashboard-insight">
+          {businessSummary.count
+            ? `目前綠燈單占 ${formatNumber(businessSummary.greenRate)}%，完整成本以 ${settings.fullCostPerKm} 元／km 計。`
+            : "先儲存第一筆訂單，這裡就會開始累積真實收益。"}
+        </p>
+      </section>
+
+      <section className="plans-panel" aria-labelledby="plans-title">
+        <div className="section-heading compact-heading">
+          <div>
+            <span className="step-label">BETA 方案</span>
+            <h2 id="plans-title">核心免費，進階分析才收費</h2>
+          </div>
+          <span className="founder-note">早鳥價格調查中</span>
+        </div>
+        <div className="plan-grid">
+          <article className="plan-card current-plan">
+            <span className="plan-tag">FREE</span>
+            <h3>接單判斷</h3>
+            <strong>$0</strong>
+            <ul>
+              <li>紅黃綠即時計算</li>
+              <li>每月收益儀表板</li>
+              <li>最多 30 筆訂單紀錄</li>
+            </ul>
+            <span className="plan-state">你目前的方案</span>
+          </article>
+          <article className="plan-card pro-plan">
+            <span className="plan-tag">PRO</span>
+            <h3>外送營運助手</h3>
+            <strong><small>預計</small> $99 <small>/ 月</small></strong>
+            <ul>
+              <li>無限紀錄與跨裝置同步</li>
+              <li>餐廳等待、區域與時段分析</li>
+              <li>保養提醒與 CSV 匯出</li>
+            </ul>
+            <button type="button" onClick={openProInterest}>我有興趣，加入 Beta</button>
+          </article>
+        </div>
+      </section>
+
       <section className="quick-fill" aria-labelledby="quick-fill-title">
         <div className="section-heading compact-heading">
           <div>
@@ -412,7 +657,7 @@ export function OrderCalculator() {
               <span className="step-label">紀錄</span>
               <h2 id="history-title">最近的判斷</h2>
             </div>
-            <span className="local-note">只存在這台裝置</span>
+            <span className="local-note">{account ? "已登入，可同步" : "登入後可同步"}</span>
           </div>
           {history.length === 0 ? (
             <p className="empty-state">尚未儲存任何訂單。</p>
@@ -479,6 +724,71 @@ export function OrderCalculator() {
         </section>
       ) : null}
 
+      <section className="feedback-panel" id="feedback" aria-labelledby="feedback-title">
+        <div className="section-heading compact-heading">
+          <div>
+            <span className="step-label">一起決定下一版</span>
+            <h2 id="feedback-title">哪個功能值得你付費？</h2>
+          </div>
+          <button className="text-button" type="button" onClick={() => setFeedbackOpen(!feedbackOpen)}>
+            {feedbackOpen ? "收起" : "留下意見"}
+          </button>
+        </div>
+        <p>Beta 階段不收費。你的回答只用來決定先做哪個功能。</p>
+        {feedbackOpen ? (
+          <form className="feedback-form" onSubmit={submitFeedback}>
+            <div className="feedback-categories" aria-label="回饋類型">
+              {[
+                ["feature", "想要的功能"],
+                ["problem", "使用問題"],
+                ["pro_interest", "願意試 Pro"],
+              ].map(([value, label]) => (
+                <button
+                  className={feedbackCategory === value ? "active" : ""}
+                  key={value}
+                  onClick={() => setFeedbackCategory(value as FeedbackCategory)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {!account ? (
+              <label>
+                <span>聯絡 Email</span>
+                <input
+                  autoComplete="email"
+                  inputMode="email"
+                  onChange={(event) => setFeedbackEmail(event.target.value)}
+                  placeholder="name@example.com"
+                  required
+                  type="email"
+                  value={feedbackEmail}
+                />
+              </label>
+            ) : null}
+            <label>
+              <span>你的想法</span>
+              <textarea
+                minLength={5}
+                maxLength={1500}
+                onChange={(event) => setFeedbackMessage(event.target.value)}
+                placeholder="例如：我最想知道哪個時段、哪個區域的淨時薪最高。"
+                required
+                value={feedbackMessage}
+              />
+            </label>
+            <input className="honeypot" name="website" tabIndex={-1} autoComplete="off" />
+            <div className="feedback-submit-row">
+              <button disabled={feedbackSending} type="submit">
+                {feedbackSending ? "送出中…" : "送出回饋"}
+              </button>
+              {feedbackStatus ? <span role="status">{feedbackStatus}</span> : null}
+            </div>
+          </form>
+        ) : null}
+      </section>
+
       <footer>
         <div>
           <strong>目前基準</strong>
@@ -489,7 +799,7 @@ export function OrderCalculator() {
           <a href="https://www.cpc.com.tw/" target="_blank" rel="noreferrer">中油牌價</a>
           <a href="https://www.uber.com/tw/zh-tw/blog/delivery-partner-start-trips/" target="_blank" rel="noreferrer">新版派單卡</a>
         </div>
-        <p>請在停妥車輛後操作。畫面結果是估算，不代表平台實際收入。</p>
+        <p>獨立開發、非外送平台官方產品。請在停妥車輛後操作，結果僅為估算。</p>
       </footer>
     </main>
   );
