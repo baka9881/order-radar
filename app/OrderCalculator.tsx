@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { NavigationPanel } from "./NavigationPanel";
 
 type Signal = "green" | "yellow" | "red";
 
@@ -403,6 +404,8 @@ export function OrderCalculator() {
           <span>完整淨時薪</span>
         </div>
       </section>
+
+      <NavigationPanel />
 
       <section className="input-panel" aria-labelledby="offer-title">
         <div className="section-heading">
