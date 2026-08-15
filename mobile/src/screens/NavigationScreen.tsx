@@ -225,7 +225,7 @@ export function NavigationScreen() {
       <View>
         <Text style={commonStyles.eyebrow}>安全導航 BETA · 本機比對</Text>
         <Text style={commonStyles.title}>前方設備提醒</Text>
-        <Text style={commonStyles.subtitle}>使用 Apple Maps 底圖；公開設備資料儲存在 App 內，不上傳即時位置。</Text>
+        <Text style={commonStyles.subtitle}>使用 Apple Maps 底圖；雷達比對在 App 內完成，不會上傳即時位置或完整行程。</Text>
       </View>
 
       <View style={styles.mapCard}>

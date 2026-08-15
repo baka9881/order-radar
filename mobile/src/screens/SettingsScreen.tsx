@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { NumericField } from "../components/NumericField";
 import { enforcementDataset } from "../enforcement";
 import { saveSettings } from "../storage";
@@ -12,10 +12,21 @@ type Props = {
   settings: CalculatorSettings;
   onSettingsChange: (settings: CalculatorSettings) => void;
   onClearData: () => Promise<void>;
+  dataProgramEnabled: boolean;
+  deletionPending: boolean;
+  onDataProgramChange: (status: "enrolled" | "declined") => Promise<boolean>;
 };
 
-export function SettingsScreen({ settings, onSettingsChange, onClearData }: Props) {
+export function SettingsScreen({
+  settings,
+  onSettingsChange,
+  onClearData,
+  dataProgramEnabled,
+  deletionPending,
+  onDataProgramChange,
+}: Props) {
   const [draft, setDraft] = useState(settings);
+  const [privacyStatus, setPrivacyStatus] = useState("");
 
   const update = (key: keyof CalculatorSettings, value: number) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -32,6 +43,38 @@ export function SettingsScreen({ settings, onSettingsChange, onClearData }: Prop
       { text: "取消", style: "cancel" },
       { text: "清除", style: "destructive", onPress: () => void onClearData() },
     ]);
+  };
+
+  const changeDataProgram = (enabled: boolean) => {
+    if (enabled) {
+      Alert.alert(
+        "加入匿名資料計畫？",
+        "按下同意後，只有你記錄訂單時才會送出區間化資料與約 2 公里區域。資料可能彙整成付費商圈報表提供餐廳或車隊；不包含姓名、Email、裝置 ID、原始 GPS、完整路線或畫面。",
+        [
+          { text: "取消", style: "cancel" },
+          {
+            text: "同意加入",
+            onPress: () => void onDataProgramChange("enrolled").then(() => setPrivacyStatus("已加入，可隨時退出。")),
+          },
+        ],
+      );
+      return;
+    }
+
+    Alert.alert(
+      "退出並刪除匿名資料？",
+      "會立即停止新的上傳，並使用這台手機保存的刪除憑證移除過去貢獻。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "退出並刪除",
+          style: "destructive",
+          onPress: () => void onDataProgramChange("declined").then((deleted) => {
+            setPrivacyStatus(deleted ? "已退出，過去貢獻已刪除。" : "已停止上傳；目前離線，刪除憑證已保留供稍後重試。");
+          }),
+        },
+      ],
+    );
   };
 
   return (
@@ -66,7 +109,25 @@ export function SettingsScreen({ settings, onSettingsChange, onClearData }: Prop
 
       <View style={[commonStyles.card, { gap: 11 }]}>
         <Text style={styles.cardTitle}>資料與隱私</Text>
-        <Text style={commonStyles.subtitle}>核心功能不需登入。訂單、設定與即時位置留在手機；背景提醒只比對內建的政府公開設備資料。</Text>
+        <Text style={commonStyles.subtitle}>核心功能不需登入。完整訂單、設定、原始位置與背景提醒比對留在手機。</Text>
+        <View style={styles.programRow}>
+          <View style={styles.programCopy}>
+            <Text style={styles.programTitle}>匿名商圈資料計畫</Text>
+            <Text style={commonStyles.subtitle}>{dataProgramEnabled ? "已加入：記錄訂單時送出區間化資料。" : "未加入：不會上傳訂單資料。"}</Text>
+          </View>
+          <Switch
+            onValueChange={changeDataProgram}
+            thumbColor={dataProgramEnabled ? COLORS.green : "#d6ded9"}
+            trackColor={{ false: "#27352d", true: COLORS.greenDark }}
+            value={dataProgramEnabled}
+          />
+        </View>
+        {deletionPending ? (
+          <Pressable onPress={() => changeDataProgram(false)} style={styles.retryButton}>
+            <Text style={styles.retryText}>重試刪除過去匿名資料</Text>
+          </Pressable>
+        ) : null}
+        {privacyStatus ? <Text style={styles.privacyStatus}>{privacyStatus}</Text> : null}
         <View style={styles.linkRow}>
           <Pressable onPress={() => void Linking.openURL(`${SITE_URL}/privacy`)} style={[commonStyles.secondaryButton, { flex: 1 }]}>
             <Text style={commonStyles.secondaryButtonText}>隱私權政策</Text>
@@ -97,6 +158,12 @@ export function SettingsScreen({ settings, onSettingsChange, onClearData }: Prop
 const styles = StyleSheet.create({
   cardTitle: { color: COLORS.ink, fontSize: 15, fontWeight: "900" },
   linkRow: { flexDirection: "row", gap: 8 },
+  programRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 5 },
+  programCopy: { flex: 1, gap: 2 },
+  programTitle: { color: COLORS.ink, fontSize: 13, fontWeight: "900" },
+  retryButton: { minHeight: 42, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,203,71,0.35)", borderRadius: 13 },
+  retryText: { color: COLORS.yellow, fontSize: 11, fontWeight: "900" },
+  privacyStatus: { color: COLORS.green, fontSize: 10, lineHeight: 15 },
   dangerButton: { minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "rgba(255,106,98,0.32)", borderRadius: 13, backgroundColor: "rgba(255,106,98,0.06)" },
   dangerText: { color: COLORS.red, fontSize: 11, fontWeight: "900" },
   source: { color: "#bdcac2", fontSize: 10, lineHeight: 15 },

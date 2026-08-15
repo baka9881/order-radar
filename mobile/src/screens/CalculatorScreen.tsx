@@ -3,6 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "re
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { NumericField } from "../components/NumericField";
+import { submitMarketContribution } from "../market-data";
 import { calculateOrder, formatNumber, STATUS } from "../order-engine";
 import { saveHistory } from "../storage";
 import { COLORS, commonStyles } from "../theme";
@@ -12,9 +13,19 @@ type Props = {
   settings: CalculatorSettings;
   history: HistoryItem[];
   onHistoryChange: (history: HistoryItem[]) => void;
+  dataProgramEnabled: boolean;
+  consentVersion: string | null;
+  onContributionReceipt: (receiptId: string) => Promise<void>;
 };
 
-export function CalculatorScreen({ settings, history, onHistoryChange }: Props) {
+export function CalculatorScreen({
+  settings,
+  history,
+  onHistoryChange,
+  dataProgramEnabled,
+  consentVersion,
+  onContributionReceipt,
+}: Props) {
   const [amount, setAmount] = useState(132);
   const [distance, setDistance] = useState(8.4);
   const [minutes, setMinutes] = useState(35);
@@ -42,8 +53,18 @@ export function CalculatorScreen({ settings, history, onHistoryChange }: Props) 
     const next = [item, ...history].slice(0, 500);
     onHistoryChange(next);
     await saveHistory(next);
+    let contributionMessage = "這筆訂單只儲存在你的手機。";
+    if (dataProgramEnabled && consentVersion) {
+      try {
+        const receiptId = await submitMarketContribution(item, consentVersion);
+        await onContributionReceipt(receiptId);
+        contributionMessage = "本機紀錄已儲存，匿名區間資料也已送出。";
+      } catch {
+        contributionMessage = "本機紀錄已儲存；匿名資料目前未送出。";
+      }
+    }
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("已記錄", "這筆訂單只儲存在你的手機。", [{ text: "好" }]);
+    Alert.alert("已記錄", contributionMessage, [{ text: "好" }]);
   };
 
   return (

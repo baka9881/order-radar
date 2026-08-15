@@ -70,3 +70,15 @@ export type HistoryItem = OrderInput & {
   fullHourly: number;
   perKm: number;
 };
+
+export type DataProgramStatus = "enrolled" | "declined";
+
+export type PrivacyChoices = {
+  termsVersion: string;
+  termsAcceptedAt: string;
+  dataProgramStatus: DataProgramStatus;
+  consentVersion: string | null;
+  consentedAt: string | null;
+  contributionReceipts: string[];
+  deletionPending: boolean;
+};

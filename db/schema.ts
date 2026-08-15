@@ -42,3 +42,25 @@ export const feedback = sqliteTable(
   },
   (table) => [index("idx_feedback_created").on(table.createdAt)],
 );
+
+export const marketContributions = sqliteTable(
+  "market_contributions",
+  {
+    receiptId: text("receipt_id").primaryKey(),
+    consentVersion: text("consent_version").notNull(),
+    observedHour: text("observed_hour").notNull(),
+    amountBand: integer("amount_band").notNull(),
+    distanceBand: real("distance_band").notNull(),
+    durationBand: integer("duration_band").notNull(),
+    waitBand: integer("wait_band").notNull(),
+    signal: text("signal", { enum: ["green", "yellow", "red"] }).notNull(),
+    areaLat: real("area_lat"),
+    areaLng: real("area_lng"),
+    submittedAt: text("submitted_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (table) => [
+    index("idx_market_area_hour").on(table.areaLat, table.areaLng, table.observedHour),
+    index("idx_market_expires").on(table.expiresAt),
+  ],
+);

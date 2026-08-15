@@ -105,3 +105,18 @@ test("configures signed-in cloud records and beta feedback storage", async () =>
   assert.match(migration, /CREATE TABLE `feedback`/);
   assert.match(migration, /idx_orders_user_created/);
 });
+
+test("ships an opt-in anonymous market data pipeline", async () => {
+  const [schema, route, onboarding] = await Promise.all([
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/data-program/contributions/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../mobile/src/screens/OnboardingScreen.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(schema, /market_contributions/);
+  assert.match(schema, /idx_market_area_hour/);
+  assert.match(route, /CONSENT_VERSION = "2026-08-15-v1"/);
+  assert.match(route, /payload\.areaLat === null/);
+  assert.match(onboarding, /暫不加入，資料只留手機/);
+  assert.match(onboarding, /約 2 公里的區域/);
+});
