@@ -15,7 +15,7 @@ import * as KeepAwake from "expo-keep-awake";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import * as Speech from "expo-speech";
-import MapView, { Marker, type MapPressEvent, type Region } from "react-native-maps";
+import { RadarMap } from "../components/RadarMap";
 import { BACKGROUND_LOCATION_TASK } from "../background-location";
 import {
   distanceKm,
@@ -229,28 +229,14 @@ export function NavigationScreen() {
       </View>
 
       <View style={styles.mapCard}>
-        <MapView
+        <RadarMap
+          destination={destination}
           initialRegion={INITIAL_REGION}
-          mapType="standard"
           onPress={setMapDestination}
+          points={points}
           ref={mapRef}
-          showsCompass
-          showsMyLocationButton
-          showsUserLocation
           style={styles.map}
-          userInterfaceStyle="dark"
-        >
-          {points.slice(0, 180).map((point) => (
-            <Marker
-              coordinate={point}
-              description={[point.direction, point.speedLimit ? `速限 ${point.speedLimit}` : "", point.source].filter(Boolean).join(" · ")}
-              key={point.id}
-              pinColor={TYPE_COLOR[point.type]}
-              title={`${TYPE_LABEL[point.type]} · ${point.title}`}
-            />
-          ))}
-          {destination ? <Marker coordinate={destination} pinColor={COLORS.blue} title="目的地" /> : null}
-        </MapView>
+        />
         <View style={styles.legend}>
           {(Object.keys(TYPE_LABEL) as EnforcementPoint["type"][]).map((type) => (
             <View key={type} style={styles.legendItem}>

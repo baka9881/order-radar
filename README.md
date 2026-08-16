@@ -1,116 +1,99 @@
-# 接單雷達
+# 接單雷達 (Order Radar)
 
-臺灣外送員的接單成本試算、安全導航與政府公開固定執法設備提醒工具。
+專為**臺灣外送員**（Uber Eats / Foodpanda 等）打造的成本試算、即時車速、政府公開固定執法設備警示與安全輔助工具。
 
-專案包含兩個產品表面：
+---
 
-- 根目錄：以 vinext／Cloudflare Workers 執行的網站、API、雲端訂單及回饋。
-- `mobile/`：Expo SDK 57／React Native iOS App，使用 Apple Maps、裝置內資料及 EAS 雲端建置。
+## 產品核心功能
 
-## Prerequisites
+1. **接單效益與實質時薪試算**：輸入外送費、里程與預估時間，自動扣除油資、機油輪胎耗材與車輛折舊，給予接單燈號評判（綠燈/黃燈/紅燈）。
+2. **固定測速與科技執法提醒**：整合政府公開資料（1,800+ 筆點位），提供即時車速與前置語音/震動警報。
+3. **隱私至上設計**：行車雷達比對全程在裝置本機端完成，不儲存或上傳即時 GPS 軌跡；自願加入之市場數據在手機端進行約 2 公里區間化去識別處理。
 
-- Node.js `>=22.13.0`
+---
 
-## Quick Start
+## 專案雙端架構
 
+| 平台 | 技術棧 | 說明 |
+| :--- | :--- | :--- |
+| **Web 網站 & API** | Next.js 16 + React 19 + vinext + Tailwind CSS v4 + Cloudflare D1 | 網頁版接單試算器、API 服務與 App Store 審查政策頁面 |
+| **Mobile App** | Expo SDK 57 + React Native 0.86 + Apple Maps | iOS 原生 App，支援離線資料庫、背景定位與語音通知 |
+
+---
+
+## 環境需求 (Prerequisites)
+
+- **Node.js** `>= 22.13.0`
+- **npm** (隨附於 Node.js)
+
+---
+
+## 快速上手與開發預覽
+
+### 1. Web 端網站開發
 ```bash
 npm install
 npm run dev
-npm run build
 ```
+- 開發預覽網址：`http://localhost:3000/`
+- 除錯介面：`http://localhost:3000/__debug`
 
-手機 App：
-
+### 2. Mobile App 行動端開發（預設瀏覽器裝置模擬）
 ```bash
 cd mobile
 npm install
-npm run validate
-npm start
+npx expo start --web
+```
+- 瀏覽器開啟：`http://localhost:8081`
+- 按下 `F12` 開啟開發者工具，按 `Ctrl + Shift + M` 切換為 **iPhone 14 Pro / 15 Pro** 視角即可完整操作。
+
+---
+
+## 常用指令 (Scripts)
+
+### 根目錄（Web & 全域）
+- `npm run dev`：啟動 Web 本地開發伺服器
+- `npm run build`：驗證與建置 vinext Web 產物
+- `npm test`：執行 Web 端 SSR 與頁面渲染測試
+- `npm run db:generate`：產生 Drizzle ORM 資料庫遷移檔案
+- `npm run data:mobile`：從本地 API 重新整理 Mobile 離線執法設備點位快照
+
+### Mobile 目錄 (`mobile/`)
+- `npx expo start --web`：啟動 React Native Web 開發伺服器（推薦預覽）
+- `npm start`：啟動 Expo Metro Bundler（供 Expo Go 或 EAS 開發版掃描）
+- `npm test`：執行行動端 Vitest 單元測試
+- `npm run validate`：依序執行 TypeCheck、測試與 iOS Bundle 匯出驗證
+- `npm run build:ios:dev`：透過 EAS 雲端建置真機測試包
+
+---
+
+## 專案目錄結構
+
+```plaintext
+order-radar/
+├── app/                  # Web 前端頁面與後端 API (Next.js / vinext)
+│   ├── OrderCalculator.tsx # 外送接單成本與淨利試算面板
+│   ├── NavigationPanel.tsx # 網頁端執法設備地圖與點位清單
+│   ├── api/              # 後端 API (執法點資料聚合、自願匿名資料計畫、回饋)
+│   ├── privacy/ & terms/ # 隱私權政策與服務條款（符合 App Store 上架規範）
+│   └── chatgpt-auth.ts   # Sign in with ChatGPT 身份驗證模組
+├── mobile/               # 行動端 iOS 專案 (Expo SDK 57 / React Native)
+│   ├── App.tsx           # 行動端主入口與 Tab 導航
+│   ├── src/
+│   │   ├── components/   # 跨平台元件 (RadarMap, NumericField)
+│   │   ├── screens/      # 畫面 (試算器、雷達地圖、歷史紀錄、設定、開場條款)
+│   │   ├── order-engine.ts # 核心成本與時薪計算引擎
+│   │   ├── enforcement.ts  # 離線執法設備距離計算與快取
+│   │   └── background-location.ts # iOS 背景定位與本機通知
+│   └── store/            # App Store 上架審核中繼資料與隱私標籤
+├── db/                   # 資料庫定義 (Cloudflare D1)
+│   └── schema.ts         # 使用者、訂單與回饋之 Drizzle Schema
+├── worker/               # Cloudflare Workers 入口點
+├── scripts/              # 工具腳本 (同步政府公開執法點位)
+└── tests/                # Web 端與 SSR 渲染測試
 ```
 
-背景定位必須使用 EAS development build 安裝到真實 iPhone，無法只靠 Expo Go 驗證。完整步驟見 `mobile/README.md` 與 `mobile/APP_STORE_CHECKLIST.md`。
+---
 
-This starter does not use `wrangler.jsonc`.
-
-## Website Architecture
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` defines profiles, orders, and feedback storage
-- `app/api/enforcement` aggregates official fixed-enforcement datasets
-- `app/privacy`, `app/terms`, and `app/support` contain App Store policy surfaces
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the website and verify rendered product routes
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-- `npm run data:mobile`: refresh the mobile offline enforcement snapshot while the local website API is running
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+## 授權與隱私說明
+本專案執法設備點位取自政府資料開放平臺公開資料，純供行車安全警示使用。使用者位置僅於裝置端本機比對，不作未授權追蹤。
