@@ -12,6 +12,7 @@ import { NavigationScreen } from "./src/screens/NavigationScreen";
 import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { deleteMarketContributions } from "./src/market-data";
+import { IS_EXPO_GO } from "./src/runtime";
 import {
   clearLocalData,
   DATA_PROGRAM_CONSENT_VERSION,
@@ -120,7 +121,7 @@ export default function App() {
   };
 
   const clearEverything = async () => {
-    if (await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
+    if (!IS_EXPO_GO && await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
       await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     }
     await Notifications.cancelAllScheduledNotificationsAsync();
@@ -133,7 +134,16 @@ export default function App() {
   };
 
   const renderScreen = () => {
-    if (tab === "radar") return <NavigationScreen />;
+    if (tab === "radar") {
+      return (
+        <NavigationScreen
+          history={history}
+          onOpenCalculator={() => setTab("calculator")}
+          onOpenHistory={() => setTab("history")}
+          onOpenSettings={() => setTab("settings")}
+        />
+      );
+    }
     if (tab === "calculator") {
       return (
         <CalculatorScreen
@@ -172,7 +182,7 @@ export default function App() {
             <Text style={styles.loadingText}>載入接單雷達…</Text>
           </View>
         )}
-        {ready && privacyChoices ? <View style={styles.tabBar}>
+        {ready && privacyChoices && tab !== "radar" ? <View style={styles.tabBar}>
           {TABS.map((item) => {
             const active = tab === item.id;
             return (

@@ -1,43 +1,66 @@
 import React, { forwardRef } from "react";
-import MapView, { Marker, type MapPressEvent, type Region } from "react-native-maps";
+import { StyleSheet, View } from "react-native";
+import MapView, { Marker, type LongPressEvent, type Region } from "react-native-maps";
 import { TYPE_COLOR, TYPE_LABEL } from "../enforcement";
 import { COLORS } from "../theme";
 import type { Coordinates, EnforcementPoint } from "../types";
 
 type Props = {
   initialRegion: Region;
-  points: EnforcementPoint[];
+  darkMap?: boolean;
+  visiblePoints: EnforcementPoint[];
   destination: Coordinates | null;
-  onPress: (event: MapPressEvent) => void;
+  onLongPress?: (event: LongPressEvent) => void;
   style?: any;
 };
 
 export const RadarMap = forwardRef<MapView, Props>(function RadarMap(
-  { initialRegion, points, destination, onPress, style },
+  { initialRegion, darkMap = true, visiblePoints, destination, onLongPress, style },
   ref
 ) {
   return (
     <MapView
       initialRegion={initialRegion}
       mapType="standard"
-      onPress={onPress}
+      onLongPress={onLongPress}
       ref={ref}
-      showsCompass
-      showsMyLocationButton
+      showsCompass={false}
+      showsMyLocationButton={false}
       showsUserLocation
-      style={style}
-      userInterfaceStyle="dark"
+      style={style || StyleSheet.absoluteFill}
+      userInterfaceStyle={darkMap ? "dark" : "light"}
     >
-      {points.slice(0, 180).map((point) => (
+      {visiblePoints.map((point) => (
         <Marker
           coordinate={point}
           description={[point.direction, point.speedLimit ? `速限 ${point.speedLimit}` : "", point.source].filter(Boolean).join(" · ")}
           key={point.id}
-          pinColor={TYPE_COLOR[point.type]}
           title={`${TYPE_LABEL[point.type]} · ${point.title}`}
-        />
+          tracksViewChanges={false}
+        >
+          <View style={[styles.mapMarker, { borderColor: TYPE_COLOR[point.type] }]}>
+            <View style={[styles.mapMarkerCore, { backgroundColor: TYPE_COLOR[point.type] }]} />
+          </View>
+        </Marker>
       ))}
       {destination ? <Marker coordinate={destination} pinColor={COLORS.blue} title="目的地" /> : null}
     </MapView>
   );
+});
+
+const styles = StyleSheet.create({
+  mapMarker: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(7,17,13,0.9)",
+  },
+  mapMarkerCore: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
 });

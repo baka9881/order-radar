@@ -1,19 +1,19 @@
 import React, { forwardRef, useImperativeHandle } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { TYPE_COLOR, TYPE_LABEL } from "../enforcement";
 import { COLORS } from "../theme";
 import type { Coordinates, EnforcementPoint } from "../types";
 
 type Props = {
-  initialRegion: any;
-  points: EnforcementPoint[];
-  destination: Coordinates | null;
-  onPress: (event: any) => void;
+  initialRegion?: any;
+  darkMap?: boolean;
+  visiblePoints: EnforcementPoint[];
+  destination?: Coordinates | null;
+  onLongPress?: (event: any) => void;
   style?: any;
 };
 
 export const RadarMap = forwardRef<any, Props>(function RadarMap(
-  { points, destination, style },
+  { visiblePoints, style },
   ref
 ) {
   useImperativeHandle(ref, () => ({
@@ -21,8 +21,7 @@ export const RadarMap = forwardRef<any, Props>(function RadarMap(
   }));
 
   return (
-    <View style={[styles.container, style]}>
-      {/* 嵌入 Web 地圖 */}
+    <View style={[styles.container, style || StyleSheet.absoluteFill]}>
       <iframe
         src="https://www.openstreetmap.org/export/embed.html?bbox=121.38%2C24.98%2C121.58%2C25.10&amp;layer=mapnik"
         style={{
@@ -35,7 +34,7 @@ export const RadarMap = forwardRef<any, Props>(function RadarMap(
       />
       <View style={styles.overlay}>
         <Text style={styles.overlayText}>
-          ⚡ Web 模擬模式：已載入 {points.length} 筆執法點位
+          ⚡ Web 模擬模式：已載入 {visiblePoints.length} 筆執法點位
         </Text>
       </View>
     </View>
@@ -50,15 +49,16 @@ const styles = StyleSheet.create({
   },
   overlay: {
     position: "absolute",
-    top: 8,
-    left: 8,
-    right: 8,
-    backgroundColor: "rgba(7, 17, 13, 0.85)",
+    top: 70,
+    left: 16,
+    right: 16,
+    backgroundColor: "rgba(7, 17, 13, 0.9)",
     paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.line,
+    zIndex: 10,
   },
   overlayText: {
     color: COLORS.green,
