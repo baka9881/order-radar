@@ -34,6 +34,7 @@ import {
   DEFAULT_CAPTURE_STATUS,
   getCaptureStatus,
   getLastDetection,
+  openNotificationAccessSettings,
   openOverlayPermissionSettings,
   ORDER_CAPTURE_AVAILABLE,
   startOrderCapture,
@@ -417,6 +418,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
                 state: "error",
                 message: error instanceof Error ? error.message : "自動判單無法啟動",
                 canDrawOverlays: captureStatus.canDrawOverlays,
+                hasNotificationAccess: captureStatus.hasNotificationAccess,
                 lastError: "start-failed",
               });
             }
@@ -434,6 +436,20 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
   const requestOverlayPermission = async () => {
     await openOverlayPermissionSettings();
     setStatus("請允許接單雷達顯示在其他 App 上層，再返回本頁");
+  };
+
+  const requestNotificationAccess = () => {
+    Alert.alert(
+      "Uber 通知偵測用途",
+      "Android 的通知存取權技術上可以接收所有 App 的通知事件。接單雷達會先檢查來源，只讀取 Uber Driver 的通知文字，用來加速訂單辨識；其他 App 通知不會讀取、保存或上傳。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "前往設定",
+          onPress: () => void openNotificationAccessSettings(),
+        },
+      ],
+    );
   };
 
   const showInfo = () => {
@@ -617,6 +633,29 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
           <Pressable onPress={() => void requestOverlayPermission()} style={styles.overlayPermissionButton}>
             <Text style={styles.overlayPermissionTitle}>允許浮動判斷卡</Text>
             <Text style={styles.overlayPermissionDescription}>未開啟時仍會用通知顯示，但可能比較不醒目。</Text>
+          </Pressable>
+        ) : null}
+
+        {Platform.OS === "android" && ORDER_CAPTURE_AVAILABLE ? (
+          <Pressable
+            disabled={captureStatus.hasNotificationAccess}
+            onPress={requestNotificationAccess}
+            style={[
+              styles.notificationAccessButton,
+              captureStatus.hasNotificationAccess && styles.notificationAccessEnabled,
+            ]}
+          >
+            <Text style={[
+              styles.notificationAccessTitle,
+              captureStatus.hasNotificationAccess && styles.notificationAccessTitleEnabled,
+            ]}>
+              {captureStatus.hasNotificationAccess ? "Uber 通知加速已開啟" : "允許 Uber 訂單通知偵測"}
+            </Text>
+            <Text style={styles.notificationAccessDescription}>
+              {captureStatus.hasNotificationAccess
+                ? "收到 Uber Driver 通知時會立刻嘗試解析，資料不足則接續畫面 OCR。"
+                : "選用權限；可讓新訂單更快觸發辨識，只處理 Uber Driver。"}
+            </Text>
           </Pressable>
         ) : null}
 
@@ -917,6 +956,21 @@ const styles = StyleSheet.create({
   },
   overlayPermissionTitle: { color: COLORS.yellow, fontSize: 12, fontWeight: "900" },
   overlayPermissionDescription: { marginTop: 3, color: "#b8b2a0", fontSize: 9, lineHeight: 14 },
+  notificationAccessButton: {
+    marginTop: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "rgba(99,179,237,0.34)",
+    borderRadius: 15,
+    backgroundColor: "rgba(99,179,237,0.08)",
+  },
+  notificationAccessEnabled: {
+    borderColor: "rgba(57,224,121,0.34)",
+    backgroundColor: "rgba(57,224,121,0.08)",
+  },
+  notificationAccessTitle: { color: "#78bdf2", fontSize: 12, fontWeight: "900" },
+  notificationAccessTitleEnabled: { color: COLORS.green },
+  notificationAccessDescription: { marginTop: 3, color: "#aab5bd", fontSize: 9, lineHeight: 14 },
   captureUnavailableCard: {
     marginTop: 10,
     padding: 13,

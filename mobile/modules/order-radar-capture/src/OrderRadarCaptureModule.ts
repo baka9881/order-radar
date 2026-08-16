@@ -11,6 +11,8 @@ declare class OrderRadarCaptureModule extends NativeModule<OrderRadarCaptureModu
   canDrawOverlaysAsync(): Promise<boolean>;
   getLastDetectionAsync(): Promise<DetectedOrder | null>;
   getStatusAsync(): Promise<CaptureStatus>;
+  hasNotificationAccessAsync(): Promise<boolean>;
+  openNotificationAccessSettingsAsync(): Promise<void>;
   openOverlaySettingsAsync(): Promise<void>;
   startCaptureAsync(settings: RadarCalculationSettings): Promise<CaptureStatus>;
   stopCaptureAsync(): Promise<CaptureStatus>;

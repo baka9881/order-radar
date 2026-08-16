@@ -11,7 +11,7 @@ export default function PrivacyPage() {
     <LegalPage
       eyebrow="PRIVACY"
       title="隱私權政策"
-      intro="生效日：2026 年 8 月 15 日。接單雷達以資料最小化為原則；核心功能不需加入資料計畫，也不進行跨 App 或跨網站廣告追蹤。"
+      intro="生效日：2026 年 8 月 15 日；更新日：2026 年 8 月 17 日。接單雷達以資料最小化為原則；核心功能不需加入資料計畫，也不進行跨 App 或跨網站廣告追蹤。"
     >
       <section>
         <h2>蒐集者與核心功能</h2>
@@ -20,7 +20,7 @@ export default function PrivacyPage() {
           <li><strong>定位：</strong>用於顯示附近政府公開設備與提供安全提醒。雷達座標在手機本機與離線設備資料比對，不儲存完整行程。</li>
           <li><strong>背景定位：</strong>只有你主動開啟背景安全提醒後才使用。可隨時在 App 或 iPhone 設定中關閉。</li>
           <li><strong>訂單與設定：</strong>訂單金額、距離、時間及成本設定只儲存在裝置。核心功能不要求建立帳號。</li>
-          <li><strong>通知：</strong>只用於你開啟的前方固定設備提醒，不發送廣告通知。</li>
+          <li><strong>通知與 Android 通知存取：</strong>App 通知用於你開啟的安全提醒及訂單判斷，不發送廣告。Android 的 Uber 訂單通知偵測為選用功能；系統權限技術上可接收所有通知事件，但 App 會先檢查來源，只讀取 Uber Driver 通知文字並在手機內即時計算。其他 App 通知不讀取，Uber 通知原文不保存、不上傳。</li>
         </ul>
       </section>
 
@@ -46,7 +46,7 @@ export default function PrivacyPage() {
         <ul>
           <li>不出售可識別個人的資料、單筆訂單、刪除憑證或原始位置。</li>
           <li>不建立跨 App 或跨網站廣告追蹤。</li>
-          <li>不收集通訊錄、照片、麥克風內容或 Uber Eats 畫面。</li>
+          <li>不收集通訊錄、照片、麥克風內容、Uber Eats 畫面或 Uber Driver 通知原文。</li>
           <li>不提供或收集流動執法與警力位置回報。</li>
         </ul>
       </section>

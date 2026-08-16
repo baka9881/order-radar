@@ -9,6 +9,7 @@ export type CaptureStatus = {
   state: CaptureState;
   message: string;
   canDrawOverlays: boolean;
+  hasNotificationAccess: boolean;
   lastError?: string;
 };
 

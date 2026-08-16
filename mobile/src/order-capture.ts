@@ -19,6 +19,7 @@ export const DEFAULT_CAPTURE_STATUS: CaptureStatus = {
     ? "自動判單尚未啟動"
     : "iPhone 需使用截圖分享辨識，無法持續監看其他 App",
   canDrawOverlays: false,
+  hasNotificationAccess: false,
 };
 
 function toNativeSettings(settings: CalculatorSettings): RadarCalculationSettings {
@@ -59,6 +60,11 @@ export async function stopOrderCapture() {
 export async function openOverlayPermissionSettings() {
   if (!ORDER_CAPTURE_AVAILABLE || !NativeOrderRadarCapture) return;
   await NativeOrderRadarCapture.openOverlaySettingsAsync();
+}
+
+export async function openNotificationAccessSettings() {
+  if (!ORDER_CAPTURE_AVAILABLE || !NativeOrderRadarCapture) return;
+  await NativeOrderRadarCapture.openNotificationAccessSettingsAsync();
 }
 
 export function addCaptureStatusListener(listener: (status: CaptureStatus) => void) {

@@ -36,6 +36,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicBoolean
+import java.lang.ref.WeakReference
 import kotlin.math.max
 
 class RadarCaptureService : Service() {
@@ -60,6 +61,7 @@ class RadarCaptureService : Service() {
     super.onCreate()
     imageThread.start()
     imageHandler = Handler(imageThread.looper)
+    activeService = WeakReference(this)
     createNotificationChannels()
   }
 
@@ -234,6 +236,15 @@ class RadarCaptureService : Service() {
     )
     OrderRadarCaptureModule.emitDetection(this, detection)
     showDecision(result, offer)
+  }
+
+  private fun handleUberNotification(rawText: String) {
+    imageHandler.post {
+      // A matching notification should make the next captured frame eligible immediately.
+      // If Uber included all three values in the notification, calculate without waiting.
+      lastFrameAt = 0L
+      handleRecognizedText(rawText)
+    }
   }
 
   private fun calculate(offer: ParsedOffer): CalculationResult {
@@ -461,6 +472,7 @@ class RadarCaptureService : Service() {
     recognizer.close()
     imageThread.quitSafely()
     processing.set(false)
+    if (activeService?.get() === this) activeService = null
     super.onDestroy()
   }
 
@@ -492,6 +504,12 @@ class RadarCaptureService : Service() {
     @Volatile
     var isRunning = false
       private set
+
+    private var activeService: WeakReference<RadarCaptureService>? = null
+
+    fun onUberNotification(rawText: String) {
+      activeService?.get()?.handleUberNotification(rawText)
+    }
   }
 }
 

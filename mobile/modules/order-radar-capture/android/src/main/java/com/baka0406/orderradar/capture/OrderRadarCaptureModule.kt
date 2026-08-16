@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -54,8 +55,19 @@ class OrderRadarCaptureModule : Module() {
 
     AsyncFunction("getStatusAsync") {
       val context = appContext.reactContext
-        ?: return@AsyncFunction statusMap("error", "Android 執行環境尚未就緒", false, "missing-context")
+        ?: return@AsyncFunction statusMap(
+          "error",
+          "Android 執行環境尚未就緒",
+          false,
+          false,
+          "missing-context",
+        )
       readStatus(context)
+    }
+
+    AsyncFunction("hasNotificationAccessAsync") {
+      val context = appContext.reactContext
+      context != null && hasNotificationAccess(context)
     }
 
     AsyncFunction("getLastDetectionAsync") {
@@ -81,6 +93,16 @@ class OrderRadarCaptureModule : Module() {
       promise.resolve(null)
     }
 
+    AsyncFunction("openNotificationAccessSettingsAsync") { promise: Promise ->
+      val activity = appContext.currentActivity
+      if (activity == null) {
+        promise.reject("ERR_NO_ACTIVITY", "目前無法開啟通知存取設定", null)
+        return@AsyncFunction
+      }
+      activity.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+      promise.resolve(null)
+    }
+
     AsyncFunction("startCaptureAsync") { settings: Map<String, Double>, promise: Promise ->
       val activity = appContext.currentActivity
       if (activity == null) {
@@ -101,7 +123,7 @@ class OrderRadarCaptureModule : Module() {
 
     AsyncFunction("stopCaptureAsync") {
       val context = appContext.reactContext
-        ?: return@AsyncFunction statusMap("stopped", "自動判單已停止", false)
+        ?: return@AsyncFunction statusMap("stopped", "自動判單已停止", false, false)
       context.startService(Intent(context, RadarCaptureService::class.java).apply {
         action = RadarCaptureService.ACTION_STOP
       })
@@ -116,7 +138,13 @@ class OrderRadarCaptureModule : Module() {
 
     fun emitStatus(context: Context, state: String, message: String, error: String? = null) {
       updateStatus(context, state, message, error)
-      val event = statusMap(state, message, canDrawOverlays(context), error)
+      val event = statusMap(
+        state,
+        message,
+        canDrawOverlays(context),
+        hasNotificationAccess(context),
+        error,
+      )
       Handler(Looper.getMainLooper()).post {
         activeModule?.get()?.sendEvent("onCaptureStatus", event)
       }
@@ -148,11 +176,20 @@ class OrderRadarCaptureModule : Module() {
     private fun canDrawOverlays(context: Context): Boolean =
       Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
 
+    private fun hasNotificationAccess(context: Context): Boolean =
+      NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
     private fun readStatus(context: Context): Map<String, Any> {
       val stored = RadarCaptureStore.readStatus(context)
       val state = if (RadarCaptureService.isRunning) "running" else stored.first
       val message = if (RadarCaptureService.isRunning) "正在監看訂單畫面，辨識只在手機上進行" else stored.second
-      return statusMap(state, message, canDrawOverlays(context), stored.third)
+      return statusMap(
+        state,
+        message,
+        canDrawOverlays(context),
+        hasNotificationAccess(context),
+        stored.third,
+      )
     }
 
     private fun updateStatus(context: Context, state: String, message: String, error: String? = null) {
@@ -163,11 +200,13 @@ class OrderRadarCaptureModule : Module() {
       state: String,
       message: String,
       canDrawOverlays: Boolean,
+      hasNotificationAccess: Boolean,
       error: String? = null,
     ): Map<String, Any> = buildMap {
       put("state", state)
       put("message", message)
       put("canDrawOverlays", canDrawOverlays)
+      put("hasNotificationAccess", hasNotificationAccess)
       if (error != null) put("lastError", error)
     }
   }
