@@ -219,7 +219,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     if (IS_EXPO_GO) {
       Alert.alert(
         "Expo Go 測試限制",
-        "Expo Go 不支援 iPhone 背景定位；目前可以測試前景定位、地圖、語音與科技執法提醒。正式開發版會保留背景安全提醒。",
+        "Expo Go 無法完整測試 Android／iPhone 背景定位；目前可以測試前景定位、地圖、語音與科技執法提醒。安裝獨立測試版後即可測試背景安全提醒。",
       );
       return;
     }
