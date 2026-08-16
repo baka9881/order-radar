@@ -38,6 +38,7 @@
     "test": "vitest run",
     "export:ios": "expo export --platform ios --output-dir dist/ios-preview",
     "validate": "npm run typecheck && npm run test && npm run export:ios",
+    "build:android:apk": "npx eas-cli@latest build --platform android --profile preview",
     "build:ios:dev": "npx eas-cli@latest build --platform ios --profile development",
     "build:ios": "npx eas-cli@latest build --platform ios --profile production",
     "submit:ios": "npx eas-cli@latest submit --platform ios --profile production"
