@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AppState,
   Alert,
   Linking,
   Modal,
@@ -27,9 +28,22 @@ import {
   TYPE_LABEL,
 } from "../enforcement";
 import { IS_EXPO_GO } from "../runtime";
+import {
+  addCaptureStatusListener,
+  addOrderDetectedListener,
+  DEFAULT_CAPTURE_STATUS,
+  getCaptureStatus,
+  getLastDetection,
+  openOverlayPermissionSettings,
+  ORDER_CAPTURE_AVAILABLE,
+  startOrderCapture,
+  stopOrderCapture,
+  type CaptureStatus,
+  type DetectedOrder,
+} from "../order-capture";
 import { saveAlertPoints } from "../storage";
 import { COLORS } from "../theme";
-import type { Coordinates, EnforcementPoint, HistoryItem } from "../types";
+import type { CalculatorSettings, Coordinates, EnforcementPoint, HistoryItem } from "../types";
 
 const DEFAULT_CENTER: Coordinates = { latitude: 25.036, longitude: 121.432 };
 const INITIAL_REGION: Region = {
@@ -38,7 +52,7 @@ const INITIAL_REGION: Region = {
   longitudeDelta: 0.08,
 };
 
-type SheetName = "menu" | "layers" | "destination" | null;
+type SheetName = "menu" | "layers" | "destination" | "orderRadar" | null;
 type LayerVisibility = Record<EnforcementPoint["type"], boolean>;
 
 type Props = {
@@ -46,6 +60,7 @@ type Props = {
   onOpenCalculator: () => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
+  settings: CalculatorSettings;
 };
 
 type BottomSheetProps = {
@@ -76,7 +91,26 @@ function formatElapsed(seconds: number) {
     : `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
-export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onOpenSettings }: Props) {
+function captureStateLabel(status: CaptureStatus) {
+  if (status.state === "running") return "監看中";
+  if (status.state === "requesting") return "等待授權";
+  if (status.state === "error") return "需要處理";
+  return "尚未啟動";
+}
+
+function detectionColor(signal: DetectedOrder["signal"]) {
+  if (signal === "green") return COLORS.green;
+  if (signal === "yellow") return COLORS.yellow;
+  return COLORS.red;
+}
+
+function detectionLabel(signal: DetectedOrder["signal"]) {
+  if (signal === "green") return "接 · 值得接";
+  if (signal === "yellow") return "看 · 看情況";
+  return "拒 · 先不要";
+}
+
+export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onOpenSettings, settings }: Props) {
   const mapRef = useRef<MapView | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastAlertIdRef = useRef<string | null>(null);
@@ -98,6 +132,10 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     technology: true,
     interval: true,
   });
+  const [captureStatus, setCaptureStatus] = useState<CaptureStatus>(DEFAULT_CAPTURE_STATUS);
+  const [lastDetection, setLastDetection] = useState<DetectedOrder | null>(null);
+
+  const captureRunning = captureStatus.state === "running" || captureStatus.state === "requesting";
 
   const todaySummary = useMemo(() => {
     const today = new Date().toDateString();
@@ -166,6 +204,31 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
       void KeepAwake.deactivateKeepAwake("order-radar-navigation");
     };
   }, [handleLocation]);
+
+  useEffect(() => {
+    void Promise.all([getCaptureStatus(), getLastDetection()]).then(([nextStatus, detection]) => {
+      setCaptureStatus(nextStatus);
+      setLastDetection(detection);
+    });
+    const statusSubscription = addCaptureStatusListener(setCaptureStatus);
+    const detectionSubscription = addOrderDetectedListener((detection) => {
+      setLastDetection(detection);
+      const feedback = detection.signal === "green"
+        ? Haptics.NotificationFeedbackType.Success
+        : detection.signal === "yellow"
+          ? Haptics.NotificationFeedbackType.Warning
+          : Haptics.NotificationFeedbackType.Error;
+      void Haptics.notificationAsync(feedback);
+    });
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void getCaptureStatus().then(setCaptureStatus);
+    });
+    return () => {
+      statusSubscription?.remove();
+      detectionSubscription?.remove();
+      appStateSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (startedAt === null) return undefined;
@@ -319,6 +382,60 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     }
   };
 
+  const beginOrderCapture = () => {
+    if (Platform.OS !== "android") {
+      Alert.alert(
+        "iPhone 系統限制",
+        "iOS 不能持續讀取 Uber Eats 畫面；iPhone 版本會改用截圖後分享到接單雷達辨識。",
+      );
+      return;
+    }
+    if (!ORDER_CAPTURE_AVAILABLE) {
+      Alert.alert(
+        "需要新版 Android 測試 APK",
+        IS_EXPO_GO
+          ? "Expo Go 沒有螢幕辨識原生模組，請安裝下一版接單雷達測試 APK。"
+          : "目前安裝的版本沒有螢幕辨識模組，請更新到下一版測試 APK。",
+      );
+      return;
+    }
+
+    Alert.alert(
+      "開始自動判單",
+      "接下來 Android 會要求螢幕分享。請只選擇 Uber Eats；畫面只在手機內做文字辨識，不會保存或上傳截圖。鎖定螢幕或停止分享後，需要重新啟動。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "了解，繼續",
+          onPress: () => void (async () => {
+            try {
+              await Notifications.requestPermissionsAsync();
+              const next = await startOrderCapture(settings);
+              setCaptureStatus(next);
+            } catch (error) {
+              setCaptureStatus({
+                state: "error",
+                message: error instanceof Error ? error.message : "自動判單無法啟動",
+                canDrawOverlays: captureStatus.canDrawOverlays,
+                lastError: "start-failed",
+              });
+            }
+          })(),
+        },
+      ],
+    );
+  };
+
+  const endOrderCapture = async () => {
+    const next = await stopOrderCapture();
+    setCaptureStatus(next);
+  };
+
+  const requestOverlayPermission = async () => {
+    await openOverlayPermissionSettings();
+    setStatus("請允許接單雷達顯示在其他 App 上層，再返回本頁");
+  };
+
   const showInfo = () => {
     setSheet(null);
     Alert.alert(
@@ -378,8 +495,10 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
               <Text style={styles.summaryValue}>${todaySummary.revenue}</Text>
             </View>
           </View>
-          <View style={[styles.summaryStrip, tracking && styles.summaryStripActive]}>
-            <Text style={styles.summaryStripText}>{tracking ? "安全提醒運作中" : "停妥後再操作手機"}</Text>
+          <View style={[styles.summaryStrip, (tracking || captureRunning) && styles.summaryStripActive]}>
+            <Text style={styles.summaryStripText}>
+              {captureRunning ? "自動判單監看中" : tracking ? "安全提醒運作中" : "停妥後再操作手機"}
+            </Text>
           </View>
         </View>
 
@@ -388,12 +507,19 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
         </Pressable>
 
         <View style={styles.statusPill}>
-          <View style={[styles.statusDot, tracking && styles.statusDotActive]} />
-          <Text numberOfLines={2} style={styles.statusText}>{status}</Text>
+          <View style={[styles.statusDot, (tracking || captureRunning) && styles.statusDotActive]} />
+          <Text numberOfLines={2} style={styles.statusText}>{captureRunning ? captureStatus.message : status}</Text>
         </View>
       </View>
 
       <View pointerEvents="box-none" style={styles.rightControls}>
+        <Pressable
+          accessibilityLabel="自動判單"
+          onPress={() => setSheet("orderRadar")}
+          style={[styles.roundButton, captureRunning && styles.roundButtonActive]}
+        >
+          <Text style={[styles.radarButtonText, captureRunning && styles.roundButtonIconActive]}>判</Text>
+        </Pressable>
         <Pressable
           accessibilityLabel="切換語音提醒"
           onPress={() => setVoiceEnabled((value) => !value)}
@@ -444,6 +570,10 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
         <Text style={styles.sheetTitle}>快捷工具</Text>
         <Text style={styles.sheetSubtitle}>常用功能集中在這裡，地圖保持乾淨。</Text>
         <View style={styles.menuGrid}>
+          <Pressable onPress={() => setSheet("orderRadar")} style={styles.menuItem}>
+            <Text style={[styles.menuItemIcon, captureRunning && { color: COLORS.green }]}>判</Text>
+            <Text style={styles.menuItemLabel}>{captureRunning ? "判單監看中" : "自動判單"}</Text>
+          </Pressable>
           <Pressable onPress={() => navigateFromMenu(onOpenCalculator)} style={styles.menuItem}>
             <Text style={styles.menuItemIcon}>$</Text><Text style={styles.menuItemLabel}>成本試算</Text>
           </Pressable>
@@ -463,6 +593,74 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
             <Text style={styles.menuItemIcon}>i</Text><Text style={styles.menuItemLabel}>資料說明</Text>
           </Pressable>
         </View>
+      </BottomSheet>
+
+      <BottomSheet onClose={() => setSheet(null)} visible={sheet === "orderRadar"}>
+        <Text style={styles.sheetTitle}>即時自動判單</Text>
+        <Text style={styles.sheetSubtitle}>
+          Android 會在本機辨識 Uber Eats 的金額、公里與時間；不保存、不上傳畫面，也不會替你點擊接單。
+        </Text>
+
+        <View style={styles.captureStatusCard}>
+          <View style={[
+            styles.captureStatusDot,
+            captureRunning && styles.captureStatusDotRunning,
+            captureStatus.state === "error" && styles.captureStatusDotError,
+          ]} />
+          <View style={styles.captureStatusCopy}>
+            <Text style={styles.captureStatusTitle}>{captureStateLabel(captureStatus)}</Text>
+            <Text style={styles.captureStatusMessage}>{captureStatus.message}</Text>
+          </View>
+        </View>
+
+        {Platform.OS === "android" && ORDER_CAPTURE_AVAILABLE && !captureStatus.canDrawOverlays ? (
+          <Pressable onPress={() => void requestOverlayPermission()} style={styles.overlayPermissionButton}>
+            <Text style={styles.overlayPermissionTitle}>允許浮動判斷卡</Text>
+            <Text style={styles.overlayPermissionDescription}>未開啟時仍會用通知顯示，但可能比較不醒目。</Text>
+          </Pressable>
+        ) : null}
+
+        {!ORDER_CAPTURE_AVAILABLE ? (
+          <View style={styles.captureUnavailableCard}>
+            <Text style={styles.captureUnavailableTitle}>
+              {Platform.OS === "android" ? "需要安裝新版 Android 測試 APK" : "iPhone 目前使用截圖分享方式"}
+            </Text>
+            <Text style={styles.captureUnavailableText}>
+              {Platform.OS === "android"
+                ? "Expo Go 與舊版 APK 不包含螢幕監看原生模組。"
+                : "iOS 不允許 App 持續讀取另一個 App 的畫面。"}
+            </Text>
+          </View>
+        ) : null}
+
+        {lastDetection ? (
+          <View style={[styles.lastDetectionCard, { borderColor: `${detectionColor(lastDetection.signal)}66` }]}>
+            <Text style={[styles.lastDetectionDecision, { color: detectionColor(lastDetection.signal) }]}>
+              {detectionLabel(lastDetection.signal)}
+            </Text>
+            <Text style={styles.lastDetectionOffer}>
+              ${Math.round(lastDetection.amount)} · {lastDetection.distance} km · {Math.round(lastDetection.minutes)} 分鐘
+            </Text>
+            <Text style={styles.lastDetectionMetrics}>
+              淨利 ${Math.round(lastDetection.fullNet)}　淨時薪 ${Math.round(lastDetection.fullHourly)}　每公里 ${lastDetection.perKm.toFixed(1)}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.captureActions}>
+          <Pressable
+            disabled={!captureRunning && Platform.OS === "android" && !ORDER_CAPTURE_AVAILABLE}
+            onPress={captureRunning ? () => void endOrderCapture() : beginOrderCapture}
+            style={[
+              styles.capturePrimaryAction,
+              captureRunning && styles.captureStopAction,
+              !captureRunning && Platform.OS === "android" && !ORDER_CAPTURE_AVAILABLE && styles.captureActionDisabled,
+            ]}
+          >
+            <Text style={styles.capturePrimaryActionText}>{captureRunning ? "停止自動判單" : "開始自動判單"}</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.captureFootnote}>開始後請在 Android 系統視窗選擇 Uber Eats。騎乘中請勿操作手機。</Text>
       </BottomSheet>
 
       <BottomSheet onClose={() => setSheet(null)} visible={sheet === "layers"}>
@@ -597,6 +795,7 @@ const styles = StyleSheet.create({
   roundButtonActive: { borderColor: "rgba(57,224,121,0.38)" },
   roundButtonIcon: { color: "#f4f8f6", fontSize: 22, fontWeight: "900" },
   roundButtonIconActive: { color: COLORS.green },
+  radarButtonText: { color: "#f4f8f6", fontSize: 17, fontWeight: "900" },
   bottomControls: {
     position: "absolute",
     left: 16,
@@ -691,6 +890,65 @@ const styles = StyleSheet.create({
   menuItem: { width: "33.333%", minHeight: 82, alignItems: "center", justifyContent: "center", gap: 7 },
   menuItemIcon: { color: "#f5f7f8", fontSize: 25, fontWeight: "800" },
   menuItemLabel: { color: "#e5e9ed", fontSize: 11, fontWeight: "800" },
+  captureStatusCard: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    borderRadius: 17,
+    backgroundColor: "#111a23",
+  },
+  captureStatusDot: { width: 11, height: 11, borderRadius: 11, backgroundColor: "#7f8d96" },
+  captureStatusDotRunning: { backgroundColor: COLORS.green },
+  captureStatusDotError: { backgroundColor: COLORS.red },
+  captureStatusCopy: { flex: 1 },
+  captureStatusTitle: { color: "#f4f7f5", fontSize: 13, fontWeight: "900" },
+  captureStatusMessage: { marginTop: 3, color: "#9facb5", fontSize: 10, lineHeight: 15 },
+  overlayPermissionButton: {
+    marginTop: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "rgba(255,203,71,0.34)",
+    borderRadius: 15,
+    backgroundColor: "rgba(255,203,71,0.08)",
+  },
+  overlayPermissionTitle: { color: COLORS.yellow, fontSize: 12, fontWeight: "900" },
+  overlayPermissionDescription: { marginTop: 3, color: "#b8b2a0", fontSize: 9, lineHeight: 14 },
+  captureUnavailableCard: {
+    marginTop: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.035)",
+  },
+  captureUnavailableTitle: { color: "#e8edef", fontSize: 11, fontWeight: "900" },
+  captureUnavailableText: { marginTop: 4, color: "#9da8af", fontSize: 9, lineHeight: 14 },
+  lastDetectionCard: {
+    marginTop: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderRadius: 17,
+    backgroundColor: "#0e171f",
+  },
+  lastDetectionDecision: { fontSize: 17, fontWeight: "900" },
+  lastDetectionOffer: { marginTop: 6, color: "#f7faf8", fontSize: 14, fontWeight: "900" },
+  lastDetectionMetrics: { marginTop: 5, color: "#a9b5ae", fontSize: 9, lineHeight: 14 },
+  captureActions: { marginTop: 14 },
+  capturePrimaryAction: {
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    backgroundColor: COLORS.green,
+  },
+  captureStopAction: { backgroundColor: COLORS.red },
+  captureActionDisabled: { opacity: 0.36 },
+  capturePrimaryActionText: { color: "#07160d", fontSize: 13, fontWeight: "900" },
+  captureFootnote: { marginTop: 9, color: "#8f9ba4", fontSize: 9, lineHeight: 14, textAlign: "center" },
   layerCards: { flexDirection: "row", gap: 9, marginTop: 18 },
   layerCard: {
     flex: 1,

@@ -2,7 +2,7 @@
 
 ## 目前已完成
 
-- [x] Expo SDK 57／React Native App，不是 WebView 包殼
+- [x] Expo SDK 54／React Native App，不是 WebView 包殼
 - [x] iOS Bundle ID 暫定為 `com.baka0406.orderradar`
 - [x] 1024×1024 不透明 App icon
 - [x] 前景與背景定位權限文案
