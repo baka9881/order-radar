@@ -134,7 +134,16 @@ export default function App() {
   };
 
   const renderScreen = () => {
-    if (tab === "radar") return <NavigationScreen />;
+    if (tab === "radar") {
+      return (
+        <NavigationScreen
+          history={history}
+          onOpenCalculator={() => setTab("calculator")}
+          onOpenHistory={() => setTab("history")}
+          onOpenSettings={() => setTab("settings")}
+        />
+      );
+    }
     if (tab === "calculator") {
       return (
         <CalculatorScreen
@@ -173,7 +182,7 @@ export default function App() {
             <Text style={styles.loadingText}>載入接單雷達…</Text>
           </View>
         )}
-        {ready && privacyChoices ? <View style={styles.tabBar}>
+        {ready && privacyChoices && tab !== "radar" ? <View style={styles.tabBar}>
           {TABS.map((item) => {
             const active = tab === item.id;
             return (
