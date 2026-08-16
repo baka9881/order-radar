@@ -166,7 +166,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     return () => {
       locationSubscriptionRef.current?.remove();
       Speech.stop();
-      void KeepAwake.deactivateKeepAwake("order-radar-navigation");
+      KeepAwake.deactivateKeepAwake("order-radar-navigation").catch(() => {});
     };
   }, [handleLocation]);
 
@@ -268,7 +268,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     setSpeedKmh(0);
     setStatus("已停止定位與提醒；點擊綠色按鈕即可重新開始。");
     Speech.stop();
-    await KeepAwake.deactivateKeepAwake("order-radar-navigation");
+    await KeepAwake.deactivateKeepAwake("order-radar-navigation").catch(() => {});
   };
 
   const toggleTracking = async () => {
