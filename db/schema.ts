@@ -21,6 +21,7 @@ export const orders = sqliteTable(
     minutes: real("minutes").notNull(),
     extraWait: real("extra_wait").notNull().default(0),
     returnRisk: integer("return_risk", { mode: "boolean" }).notNull().default(false),
+    returnMode: text("return_mode", { enum: ["local", "hotspot", "full"] }).notNull().default("local"),
     signal: text("signal", { enum: ["green", "yellow", "red"] }).notNull(),
     fullHourly: real("full_hourly").notNull(),
     perKm: real("per_km").notNull(),

@@ -189,9 +189,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
   }, [alertIfNeeded]);
 
   useEffect(() => {
-    if (IS_EXPO_GO) {
-      setBackgroundEnabled(false);
-    } else {
+    if (!IS_EXPO_GO) {
       void Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
         .then(setBackgroundEnabled)
         .catch(() => setBackgroundEnabled(false));
@@ -679,6 +677,10 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
             </Text>
             <Text style={styles.lastDetectionOffer}>
               ${Math.round(lastDetection.amount)} · {lastDetection.distance} km · {Math.round(lastDetection.minutes)} 分鐘
+            </Text>
+            <Text style={styles.lastDetectionMetrics}>
+              {lastDetection.returnMode === "full" ? "原路空返" : lastDetection.returnMode === "hotspot" ? "回附近熱區" : "當地續跑"}
+              {" · 計入 "}{(lastDetection.effectiveDistance ?? lastDetection.distance).toFixed(1)} km / {Math.round(lastDetection.effectiveMinutes ?? lastDetection.minutes)} 分
             </Text>
             <Text style={styles.lastDetectionMetrics}>
               淨利 ${Math.round(lastDetection.fullNet)}　淨時薪 ${Math.round(lastDetection.fullHourly)}　每公里 ${lastDetection.perKm.toFixed(1)}

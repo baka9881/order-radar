@@ -1,4 +1,4 @@
-import type { CalculatorSettings, OrderInput, OrderResult, Signal } from "./types";
+import type { CalculatorSettings, OrderInput, OrderResult, ReturnMode, Signal } from "./types";
 
 export const DEFAULT_SETTINGS: CalculatorSettings = {
   fuelPrice: 30.5,
@@ -17,6 +17,24 @@ export const STATUS: Record<Signal, { label: string; action: string }> = {
   red: { label: "先不要", action: "拒" },
 };
 
+export const RETURN_MODES: Record<
+  ReturnMode,
+  { label: string; description: string; multiplier: number }
+> = {
+  local: { label: "當地續跑", description: "送達後留在當地等下一單", multiplier: 1 },
+  hotspot: { label: "回附近熱區", description: "加計 30% 回程距離與時間", multiplier: 1.3 },
+  full: { label: "原路空返", description: "加計完整回程距離與時間", multiplier: 2 },
+};
+
+export function normalizeReturnMode(returnMode?: ReturnMode, returnRisk?: boolean): ReturnMode {
+  if (returnMode && returnMode in RETURN_MODES) return returnMode;
+  return returnRisk ? "hotspot" : "local";
+}
+
+export function getTripMultiplier(input: Pick<OrderInput, "returnMode" | "returnRisk">) {
+  return RETURN_MODES[normalizeReturnMode(input.returnMode, input.returnRisk)].multiplier;
+}
+
 export function calculateOrder(
   input: OrderInput,
   settings: CalculatorSettings = DEFAULT_SETTINGS,
@@ -25,8 +43,9 @@ export function calculateOrder(
   const distance = Number.isFinite(input.distance) ? Math.max(input.distance, 0) : 0;
   const minutes = Number.isFinite(input.minutes) ? Math.max(input.minutes, 0) : 0;
   const extraWait = Number.isFinite(input.extraWait) ? Math.max(input.extraWait, 0) : 0;
-  const effectiveDistance = distance * (input.returnRisk ? 1.3 : 1);
-  const effectiveMinutes = Math.max(minutes + extraWait, 1);
+  const tripMultiplier = getTripMultiplier(input);
+  const effectiveDistance = distance * tripMultiplier;
+  const effectiveMinutes = Math.max(minutes * tripMultiplier + extraWait, 1);
   const fuelPerKm = settings.fuelPrice / Math.max(settings.fuelEconomy, 1);
   const fuelCost = effectiveDistance * fuelPerKm;
   const cashNet = amount - effectiveDistance * settings.cashCostPerKm;
@@ -68,14 +87,22 @@ export function calculateOrder(
 }
 
 export function parseOfferText(input: string) {
-  const amountMatch = input.match(/(?:NT\s*)?\$\s*([\d,]+(?:\.\d+)?)/i);
-  const timeMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:分鐘|min)/i);
+  const amounts = [...input.matchAll(/(?:NT\s*)?[$＄]\s*([\d,]+(?:\.\d+)?)/gi)]
+    .map((match) => Number(match[1].replaceAll(",", "")))
+    .filter(Number.isFinite);
+  const hourMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:小時|時|hours?|hrs?|h)\s*(?:(\d+(?:\.\d+)?)\s*(?:分鐘|分|minutes?|mins?|m))?/i);
+  const minuteMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:分鐘|分|minutes?|mins?|m)/i);
+  const minutes = hourMatch
+    ? Number(hourMatch[1]) * 60 + Number(hourMatch[2] ?? 0)
+    : minuteMatch
+      ? Number(minuteMatch[1])
+      : Number.NaN;
   const distanceMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:公里|km)/i);
-  if (!amountMatch || !timeMatch || !distanceMatch) return null;
+  if (!amounts.length || !Number.isFinite(minutes) || !distanceMatch) return null;
   return {
-    amount: Number(amountMatch[1].replaceAll(",", "")),
+    amount: Math.max(...amounts),
     distance: Number(distanceMatch[1]),
-    minutes: Number(timeMatch[1]),
+    minutes,
   };
 }
 

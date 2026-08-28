@@ -18,6 +18,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "接單雷達使用定位顯示附近公開設備；若你另行加入匿名資料計畫，記錄訂單時會先在手機轉成約 2 公里區域再送出。",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "只有你主動啟用背景安全提醒時，接單雷達才會在背景使用定位；位置只在手機上比對，不會儲存行程。"
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "android": {
@@ -69,6 +72,9 @@
         "projectId": "a263b478-19e4-4460-8121-7642de811bae"
       }
     },
-    "owner": "baka9881"
+    "owner": "baka9881",
+    "updates": {
+      "url": "https://u.expo.dev/a263b478-19e4-4460-8121-7642de811bae"
+    }
   }
 }

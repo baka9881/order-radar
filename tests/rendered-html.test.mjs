@@ -2,14 +2,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render(path = "/") {
+async function render(path = "/", init = {}) {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
     new Request(`http://localhost${path}`, {
-      headers: { accept: "text/html" },
+      headers: { accept: "text/html", ...(init.headers ?? {}) },
+      ...init,
     }),
     {
       ASSETS: {
@@ -22,6 +23,29 @@ async function render(path = "/") {
     },
   );
 }
+
+test("returns an immediate Shortcut decision from cropped OCR text", async () => {
+  const response = await render("/api/quick-decision", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      text: "包裹 $795 4.95 包含基本報酬加成 $136.00 總計 1 小時 3 分鐘 (29.8 公里)",
+    }),
+  });
+  const result = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(result.signal, "yellow");
+  assert.equal(result.action, "看情況");
+  assert.equal(result.amount, 795);
+  assert.equal(result.distance, 29.8);
+  assert.equal(result.minutes, 63);
+  assert.equal(result.returnMode, "full");
+  assert.equal(result.returnRisk, true);
+  assert.equal(result.effectiveDistance, 59.6);
+  assert.equal(result.effectiveMinutes, 126);
+  assert.match(result.message, /^看情況｜淨時薪 \$293｜每公里 \$13\.3$/);
+});
 
 test("server-renders the order calculator", async () => {
   const response = await render();
@@ -38,6 +62,9 @@ test("server-renders the order calculator", async () => {
   assert.match(html, /核心免費，進階分析才收費/);
   assert.match(html, /哪個功能值得你付費/);
   assert.match(html, /定位、導航與執法提醒/);
+  assert.match(html, /當地續跑/);
+  assert.match(html, /回附近熱區/);
+  assert.match(html, /原路空返/);
   assert.match(html, /Apple 地圖導航/);
   assert.match(html, /Google 地圖導航/);
   assert.match(html, /不包含流動執法/);
@@ -70,7 +97,13 @@ test("uses official fixed-enforcement datasets and publishes their coverage", as
   assert.match(source, /data\.gov\.tw\/dataset\/7320/);
   assert.match(source, /data\.gov\.tw\/dataset\/135957/);
   assert.match(source, /data\.gov\.tw\/dataset\/126156/);
+  assert.match(source, /data\.gov\.tw\/dataset\/124139/);
+  assert.match(source, /data\.gov\.tw\/dataset\/178144/);
+  assert.match(source, /data\.gov\.tw\/dataset\/178159/);
+  assert.match(source, /data\.gov\.tw\/dataset\/178168/);
+  assert.match(source, /data\.gov\.tw\/dataset\/173210/);
   assert.match(source, /data\.gov\.tw\/dataset\/170673/);
+  assert.match(source, /query\.get\("all"\) === "1"/);
   assert.match(source, /max-age=1800/);
 });
 

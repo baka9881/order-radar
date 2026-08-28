@@ -28,6 +28,9 @@ export type DetectedOrder = {
   amount: number;
   distance: number;
   minutes: number;
+  returnMode?: 'local' | 'hotspot' | 'full';
+  effectiveDistance?: number;
+  effectiveMinutes?: number;
   signal: 'green' | 'yellow' | 'red';
   fullNet: number;
   fullHourly: number;

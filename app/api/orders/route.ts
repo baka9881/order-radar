@@ -4,6 +4,7 @@ import { getDb } from "../../../db";
 import { orders } from "../../../db/schema";
 
 type Signal = "green" | "yellow" | "red";
+type ReturnMode = "local" | "hotspot" | "full";
 
 type OrderPayload = {
   id?: string;
@@ -13,12 +14,14 @@ type OrderPayload = {
   minutes?: number;
   extraWait?: number;
   returnRisk?: boolean;
+  returnMode?: ReturnMode;
   signal?: Signal;
   fullHourly?: number;
   perKm?: number;
 };
 
 const SIGNALS = new Set<Signal>(["green", "yellow", "red"]);
+const RETURN_MODES = new Set<ReturnMode>(["local", "hotspot", "full"]);
 
 function validNumber(value: unknown, min: number, max: number) {
   return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
@@ -36,7 +39,12 @@ export async function GET() {
     .orderBy(desc(orders.createdAt))
     .limit(500);
 
-  return Response.json({ orders: rows });
+  return Response.json({
+    orders: rows.map((row) => ({
+      ...row,
+      returnMode: row.returnMode === "local" && row.returnRisk ? "hotspot" : row.returnMode,
+    })),
+  });
 }
 
 export async function POST(request: Request) {
@@ -46,6 +54,7 @@ export async function POST(request: Request) {
   const payload = (await request.json()) as OrderPayload;
   const id = payload.id?.trim() ?? "";
   const createdAt = payload.createdAt ?? "";
+  const returnMode = payload.returnMode ?? (payload.returnRisk ? "hotspot" : "local");
 
   if (
     !id ||
@@ -58,7 +67,8 @@ export async function POST(request: Request) {
     !validNumber(payload.fullHourly, -100000, 100000) ||
     !validNumber(payload.perKm, 0, 100000) ||
     !payload.signal ||
-    !SIGNALS.has(payload.signal)
+    !SIGNALS.has(payload.signal) ||
+    !RETURN_MODES.has(returnMode)
   ) {
     return Response.json({ error: "訂單資料格式不正確" }, { status: 400 });
   }
@@ -74,7 +84,8 @@ export async function POST(request: Request) {
       distance: payload.distance!,
       minutes: payload.minutes!,
       extraWait: payload.extraWait!,
-      returnRisk: Boolean(payload.returnRisk),
+      returnRisk: returnMode !== "local",
+      returnMode,
       signal: payload.signal,
       fullHourly: payload.fullHourly!,
       perKm: payload.perKm!,

@@ -1,4 +1,5 @@
 export type Signal = "green" | "yellow" | "red";
+export type ReturnMode = "local" | "hotspot" | "full";
 
 export type Coordinates = {
   latitude: number;
@@ -45,7 +46,9 @@ export type OrderInput = {
   distance: number;
   minutes: number;
   extraWait: number;
-  returnRisk: boolean;
+  returnMode?: ReturnMode;
+  /** 舊版紀錄相容：true 等同「回附近熱區」。 */
+  returnRisk?: boolean;
 };
 
 export type OrderResult = {

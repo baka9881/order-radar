@@ -226,6 +226,9 @@ class RadarCaptureService : Service() {
       "amount" to offer.amount,
       "distance" to offer.distance,
       "minutes" to offer.minutes,
+      "returnMode" to offer.returnMode,
+      "effectiveDistance" to result.effectiveDistance,
+      "effectiveMinutes" to result.effectiveMinutes,
       "signal" to result.signal,
       "fullNet" to result.fullNet,
       "fullHourly" to result.fullHourly,
@@ -248,26 +251,32 @@ class RadarCaptureService : Service() {
   }
 
   private fun calculate(offer: ParsedOffer): CalculationResult {
-    val effectiveMinutes = max(offer.minutes, 1.0)
-    val fullNet = offer.amount - offer.distance * settings.fullCostPerKm
+    val multiplier = when (offer.returnMode) {
+      "full" -> 2.0
+      "hotspot" -> 1.3
+      else -> 1.0
+    }
+    val effectiveDistance = offer.distance * multiplier
+    val effectiveMinutes = max(offer.minutes * multiplier, 1.0)
+    val fullNet = offer.amount - effectiveDistance * settings.fullCostPerKm
     val fullHourly = fullNet * 60.0 / effectiveMinutes
-    val perKm = if (offer.distance > 0) offer.amount / offer.distance else 0.0
+    val perKm = if (effectiveDistance > 0) offer.amount / effectiveDistance else 0.0
     val greenMinimum = maxOf(
       45.0,
-      offer.distance * settings.greenPerKm,
-      offer.distance * settings.fullCostPerKm + settings.greenHourly * effectiveMinutes / 60.0,
+      effectiveDistance * settings.greenPerKm,
+      effectiveDistance * settings.fullCostPerKm + settings.greenHourly * effectiveMinutes / 60.0,
     )
     val yellowMinimum = maxOf(
       45.0,
-      offer.distance * settings.yellowPerKm,
-      offer.distance * settings.fullCostPerKm + settings.yellowHourly * effectiveMinutes / 60.0,
+      effectiveDistance * settings.yellowPerKm,
+      effectiveDistance * settings.fullCostPerKm + settings.yellowHourly * effectiveMinutes / 60.0,
     )
     val signal = when {
       offer.amount >= greenMinimum -> "green"
       offer.amount >= yellowMinimum -> "yellow"
       else -> "red"
     }
-    return CalculationResult(signal, fullNet, fullHourly, perKm)
+    return CalculationResult(signal, fullNet, fullHourly, perKm, effectiveDistance, effectiveMinutes)
   }
 
   private fun showDecision(result: CalculationResult, offer: ParsedOffer) {
@@ -283,7 +292,12 @@ class RadarCaptureService : Service() {
       "yellow" -> "看情況" to "⚠️"
       else -> "先不要" to "⛔"
     }
-    val body = "\$${offer.amount.toInt()} · ${offer.distance} km · ${offer.minutes.toInt()} 分｜淨時薪 \$${result.fullHourly.toInt()}"
+    val returnLabel = when (offer.returnMode) {
+      "full" -> "原路空返"
+      "hotspot" -> "回附近熱區"
+      else -> "當地續跑"
+    }
+    val body = "\$${offer.amount.toInt()} · $returnLabel ${String.format("%.1f", result.effectiveDistance)} km / ${result.effectiveMinutes.toInt()} 分｜淨時薪 \$${result.fullHourly.toInt()}"
     val notification = NotificationCompat.Builder(this, RESULT_CHANNEL_ID)
       .setSmallIcon(applicationInfo.icon)
       .setContentTitle("$emoji $label")
@@ -542,6 +556,7 @@ private data class ParsedOffer(
   val distance: Double,
   val minutes: Double,
   val confidence: Double,
+  val returnMode: String,
 )
 
 private data class CalculationResult(
@@ -549,25 +564,37 @@ private data class CalculationResult(
   val fullNet: Double,
   val fullHourly: Double,
   val perKm: Double,
+  val effectiveDistance: Double,
+  val effectiveMinutes: Double,
 )
 
 private object OfferParser {
   private val amountPattern = Regex("""(?i)(?:NT\s*)?[$＄]\s*([0-9][0-9,]*(?:\.[0-9]+)?)""")
   private val distancePattern = Regex("""(?i)([0-9]+(?:\.[0-9]+)?)\s*(?:公里|公厘|km)""")
   private val timePattern = Regex("""(?i)([0-9]+(?:\.[0-9]+)?)\s*(?:分鐘|分鍾|分|mins?|minutes?)""")
+  private val hourPattern = Regex("""(?i)([0-9]+(?:\.[0-9]+)?)\s*(?:小時|時|hours?|hrs?|h)\s*(?:([0-9]+(?:\.[0-9]+)?)\s*(?:分鐘|分鍾|分|mins?|minutes?))?""")
 
   fun parse(text: String): ParsedOffer? {
     if (text.length < 6) return null
     val amount = amountPattern.findAll(text)
       .mapNotNull { it.groupValues.getOrNull(1)?.replace(",", "")?.toDoubleOrNull() }
-      .firstOrNull { it in 20.0..3000.0 } ?: return null
+      .filter { it in 20.0..3000.0 }
+      .maxOrNull() ?: return null
     val distance = distancePattern.findAll(text)
       .mapNotNull { it.groupValues.getOrNull(1)?.toDoubleOrNull() }
       .filter { it in 0.1..200.0 }
       .maxOrNull() ?: return null
-    val minutes = timePattern.findAll(text)
-      .mapNotNull { it.groupValues.getOrNull(1)?.toDoubleOrNull() }
-      .firstOrNull { it in 1.0..300.0 } ?: return null
-    return ParsedOffer(amount, distance, minutes, 0.95)
+    val hourMatch = hourPattern.find(text)
+    val minutes = if (hourMatch != null) {
+      val hours = hourMatch.groupValues.getOrNull(1)?.toDoubleOrNull() ?: return null
+      val remainder = hourMatch.groupValues.getOrNull(2)?.toDoubleOrNull() ?: 0.0
+      hours * 60.0 + remainder
+    } else {
+      timePattern.findAll(text)
+        .mapNotNull { it.groupValues.getOrNull(1)?.toDoubleOrNull() }
+        .firstOrNull { it in 1.0..300.0 } ?: return null
+    }
+    val returnMode = if (text.contains("包裹") && distance >= 15.0) "full" else "local"
+    return ParsedOffer(amount, distance, minutes, 0.95, returnMode)
   }
 }

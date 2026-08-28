@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { NavigationPanel } from "./NavigationPanel";
 
 type Signal = "green" | "yellow" | "red";
+type ReturnMode = "local" | "hotspot" | "full";
 
 type CalculatorSettings = {
   fuelPrice: number;
@@ -23,7 +24,8 @@ type HistoryItem = {
   distance: number;
   minutes: number;
   extraWait: number;
-  returnRisk: boolean;
+  returnMode?: ReturnMode;
+  returnRisk?: boolean;
   signal: Signal;
   fullHourly: number;
   perKm: number;
@@ -56,6 +58,17 @@ const STATUS: Record<Signal, { label: string; short: string }> = {
   red: { label: "先不要", short: "拒" },
 };
 
+const RETURN_MODES: Record<ReturnMode, { label: string; description: string; multiplier: number }> = {
+  local: { label: "當地續跑", description: "送達後留在當地等下一單", multiplier: 1 },
+  hotspot: { label: "回附近熱區", description: "回程距離與時間各加 30%", multiplier: 1.3 },
+  full: { label: "原路空返", description: "完整計入回程距離與時間", multiplier: 2 },
+};
+
+function normalizeReturnMode(item: Pick<HistoryItem, "returnMode" | "returnRisk">): ReturnMode {
+  if (item.returnMode && item.returnMode in RETURN_MODES) return item.returnMode;
+  return item.returnRisk ? "hotspot" : "local";
+}
+
 const numberFormatter = new Intl.NumberFormat("zh-TW", {
   maximumFractionDigits: 1,
 });
@@ -77,7 +90,7 @@ export function OrderCalculator() {
   const [distance, setDistance] = useState(8.4);
   const [minutes, setMinutes] = useState(35);
   const [extraWait, setExtraWait] = useState(0);
-  const [returnRisk, setReturnRisk] = useState(false);
+  const [returnMode, setReturnMode] = useState<ReturnMode>("local");
   const [settings, setSettings] = useState<CalculatorSettings>(DEFAULT_SETTINGS);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [rawText, setRawText] = useState("");
@@ -109,7 +122,9 @@ export function OrderCalculator() {
 
       const cloudData = (await ordersResponse.json()) as { orders?: HistoryItem[] };
       const byId = new Map<string, HistoryItem>();
-      [...(cloudData.orders ?? []), ...localHistory].forEach((item) => byId.set(item.id, item));
+      [...(cloudData.orders ?? []), ...localHistory].forEach((item) => {
+        byId.set(item.id, { ...item, returnMode: normalizeReturnMode(item) });
+      });
       const merged = [...byId.values()]
         .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
         .slice(0, accountData.plan === "pro" ? 500 : 30);
@@ -146,7 +161,10 @@ export function OrderCalculator() {
           setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) });
         }
         if (savedHistory) {
-          localHistory = JSON.parse(savedHistory) as HistoryItem[];
+          localHistory = (JSON.parse(savedHistory) as HistoryItem[]).map((item) => ({
+            ...item,
+            returnMode: normalizeReturnMode(item),
+          }));
           setHistory(localHistory);
         }
 
@@ -154,9 +172,11 @@ export function OrderCalculator() {
         const queryAmount = Number(query.get("amount"));
         const queryDistance = Number(query.get("distance") ?? query.get("km"));
         const queryMinutes = Number(query.get("minutes") ?? query.get("time"));
+        const queryReturnMode = query.get("returnMode");
         if (queryAmount > 0) setAmount(queryAmount);
         if (queryDistance > 0) setDistance(queryDistance);
         if (queryMinutes > 0) setMinutes(queryMinutes);
+        if (queryReturnMode && queryReturnMode in RETURN_MODES) setReturnMode(queryReturnMode as ReturnMode);
       } catch {
         // Keep defaults when local browser data is unavailable.
       }
@@ -177,8 +197,9 @@ export function OrderCalculator() {
   }, [hydrated, settings]);
 
   const result = useMemo(() => {
-    const effectiveDistance = Math.max(distance, 0) * (returnRisk ? 1.3 : 1);
-    const effectiveMinutes = Math.max(minutes + extraWait, 1);
+    const multiplier = RETURN_MODES[returnMode].multiplier;
+    const effectiveDistance = Math.max(distance, 0) * multiplier;
+    const effectiveMinutes = Math.max(Math.max(minutes, 0) * multiplier + Math.max(extraWait, 0), 1);
     const fuelPerKm = settings.fuelPrice / Math.max(settings.fuelEconomy, 1);
     const fuelCost = effectiveDistance * fuelPerKm;
     const cashNet = amount - effectiveDistance * settings.cashCostPerKm;
@@ -217,7 +238,7 @@ export function OrderCalculator() {
       greenMinimum,
       yellowMinimum,
     };
-  }, [amount, distance, minutes, extraWait, returnRisk, settings]);
+  }, [amount, distance, minutes, extraWait, returnMode, settings]);
 
   const businessSummary = useMemo(() => {
     const now = new Date();
@@ -227,12 +248,13 @@ export function OrderCalculator() {
     });
     const totals = monthly.reduce(
       (summary, item) => {
-        const effectiveDistance = item.distance * (item.returnRisk ? 1.3 : 1);
+        const multiplier = RETURN_MODES[normalizeReturnMode(item)].multiplier;
+        const effectiveDistance = item.distance * multiplier;
         const fullCost = effectiveDistance * settings.fullCostPerKm;
         summary.revenue += item.amount;
         summary.net += item.amount - fullCost;
         summary.distance += effectiveDistance;
-        summary.minutes += item.minutes + item.extraWait;
+        summary.minutes += item.minutes * multiplier + item.extraWait;
         summary[item.signal] += 1;
         return summary;
       },
@@ -248,17 +270,25 @@ export function OrderCalculator() {
   }, [history, settings.fullCostPerKm]);
 
   const parseOfferText = (input: string) => {
-    const amountMatch = input.match(/(?:NT\s*)?\$\s*([\d,]+(?:\.\d+)?)/i);
-    const timeMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:分鐘|min)/i);
+    const amounts = [...input.matchAll(/(?:NT\s*)?[$＄]\s*([\d,]+(?:\.\d+)?)/gi)]
+      .map((match) => Number(match[1].replaceAll(",", "")))
+      .filter(Number.isFinite);
+    const hourMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:小時|時|hours?|hrs?|h)\s*(?:(\d+(?:\.\d+)?)\s*(?:分鐘|分|minutes?|mins?|m))?/i);
+    const minuteMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:分鐘|分|minutes?|mins?|m)/i);
+    const parsedMinutes = hourMatch
+      ? Number(hourMatch[1]) * 60 + Number(hourMatch[2] ?? 0)
+      : minuteMatch
+        ? Number(minuteMatch[1])
+        : Number.NaN;
     const distanceMatch = input.match(/(\d+(?:\.\d+)?)\s*(?:公里|km)/i);
 
-    if (!amountMatch || !timeMatch || !distanceMatch) {
+    if (!amounts.length || !Number.isFinite(parsedMinutes) || !distanceMatch) {
       setParseMessage("找不到完整的金額、分鐘與公里，請保留這三項文字。");
       return;
     }
 
-    setAmount(Number(amountMatch[1].replaceAll(",", "")));
-    setMinutes(Number(timeMatch[1]));
+    setAmount(Math.max(...amounts));
+    setMinutes(parsedMinutes);
     setDistance(Number(distanceMatch[1]));
     setParseMessage("已填入，請確認數字後再判斷。");
   };
@@ -281,7 +311,8 @@ export function OrderCalculator() {
       distance,
       minutes,
       extraWait,
-      returnRisk,
+      returnMode,
+      returnRisk: returnMode !== "local",
       signal: result.signal,
       fullHourly: result.fullHourly,
       perKm: result.perKm,
@@ -421,7 +452,7 @@ export function OrderCalculator() {
               setDistance(8.4);
               setMinutes(35);
               setExtraWait(0);
-              setReturnRisk(false);
+              setReturnMode("local");
             }}
           >
             載入官方範例
@@ -494,18 +525,30 @@ export function OrderCalculator() {
               ))}
             </div>
           </div>
-          <label className="adjustment-row switch-row">
+          <div className="adjustment-row return-mode-row">
             <div>
-              <strong>偏僻區／可能空車回程</strong>
-              <span>計算距離自動增加 30%</span>
+              <strong>送達後怎麼跑？</strong>
+              <span>回程的距離與時間都會計入</span>
             </div>
-            <input
-              checked={returnRisk}
-              onChange={(event) => setReturnRisk(event.target.checked)}
-              type="checkbox"
-              role="switch"
-            />
-          </label>
+            <div className="return-mode-control" role="radiogroup" aria-label="送達後行程情境">
+              {(Object.keys(RETURN_MODES) as ReturnMode[]).map((mode) => (
+                <button
+                  aria-checked={returnMode === mode}
+                  className={returnMode === mode ? "active" : ""}
+                  key={mode}
+                  onClick={() => setReturnMode(mode)}
+                  role="radio"
+                  type="button"
+                >
+                  <strong>{RETURN_MODES[mode].label}</strong>
+                  <span>{RETURN_MODES[mode].description}</span>
+                </button>
+              ))}
+            </div>
+            <small className="effective-trip">
+              本次按 {formatNumber(result.effectiveDistance, 1)} km · {formatNumber(result.effectiveMinutes)} 分鐘評估
+            </small>
+          </div>
         </div>
       </section>
 
@@ -671,7 +714,7 @@ export function OrderCalculator() {
                   <div className="history-signal">{STATUS[item.signal].short}</div>
                   <div>
                     <strong>${item.amount} · {item.distance} km · {item.minutes} 分</strong>
-                    <span>{new Date(item.createdAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    <span>{new Date(item.createdAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {RETURN_MODES[normalizeReturnMode(item)].label}</span>
                   </div>
                   <div className="history-metric">
                     <strong>{numberFormatter.format(item.fullHourly)}</strong>

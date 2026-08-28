@@ -20,11 +20,35 @@ describe("order engine", () => {
     expect(result.fullHourly).toBeGreaterThan(250);
   });
 
-  it("raises effective distance for a remote return", () => {
-    const normal = calculateOrder({ amount: 100, distance: 8, minutes: 30, extraWait: 0, returnRisk: false });
-    const remote = calculateOrder({ amount: 100, distance: 8, minutes: 30, extraWait: 0, returnRisk: true });
+  it("adds both distance and time when returning to a nearby hotspot", () => {
+    const normal = calculateOrder({ amount: 100, distance: 8, minutes: 30, extraWait: 0, returnMode: "local" });
+    const remote = calculateOrder({ amount: 100, distance: 8, minutes: 30, extraWait: 0, returnMode: "hotspot" });
     expect(remote.effectiveDistance).toBeCloseTo(10.4);
+    expect(remote.effectiveMinutes).toBeCloseTo(39);
     expect(remote.fullNet).toBeLessThan(normal.fullNet);
+    expect(remote.fullHourly).toBeLessThan(normal.fullHourly);
+  });
+
+  it("counts a full empty return for the long package order", () => {
+    const result = calculateOrder({
+      amount: 795,
+      distance: 29.8,
+      minutes: 63,
+      extraWait: 0,
+      returnMode: "full",
+    });
+    expect(result.effectiveDistance).toBeCloseTo(59.6);
+    expect(result.effectiveMinutes).toBeCloseTo(126);
+    expect(result.fullNet).toBeCloseTo(616.2);
+    expect(result.fullHourly).toBeCloseTo(293.43, 1);
+    expect(result.perKm).toBeCloseTo(13.34, 1);
+    expect(result.signal).toBe("yellow");
+  });
+
+  it("keeps old return-risk records compatible", () => {
+    const result = calculateOrder({ amount: 100, distance: 8, minutes: 30, extraWait: 0, returnRisk: true });
+    expect(result.effectiveDistance).toBeCloseTo(10.4);
+    expect(result.effectiveMinutes).toBeCloseTo(39);
   });
 
   it("parses pasted offer text", () => {
@@ -32,6 +56,14 @@ describe("order engine", () => {
       amount: 132,
       distance: 8.4,
       minutes: 35,
+    });
+  });
+
+  it("parses hours and ignores a smaller base amount", () => {
+    expect(parseOfferText("包裹 $795 包含基本報酬加成 $136.00 總計 1 小時 3 分鐘 (29.8 公里)")).toEqual({
+      amount: 795,
+      distance: 29.8,
+      minutes: 63,
     });
   });
 });
