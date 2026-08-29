@@ -47,27 +47,22 @@ test("returns an immediate Shortcut decision from cropped OCR text", async () =>
   assert.match(result.message, /^看情況｜淨時薪 \$293｜每公里 \$13\.3$/);
 });
 
-test("server-renders the order calculator", async () => {
+test("server-renders the mobile-first product landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>接單雷達｜外送訂單試算與安全導航<\/title>/i);
+  assert.match(html, /<title>接單雷達｜手機外送判單工具<\/title>/i);
   assert.match(html, /接單雷達/);
-  assert.match(html, /勁戰七代 125 ABS/);
-  assert.match(html, /輸入派單資訊/);
-  assert.match(html, /貼上 OCR 文字/);
-  assert.match(html, /你真正留下多少/);
-  assert.match(html, /核心免費，進階分析才收費/);
-  assert.match(html, /哪個功能值得你付費/);
-  assert.match(html, /定位、導航與執法提醒/);
+  assert.match(html, /手機 App 是主產品/);
+  assert.match(html, /免安裝備用工具/);
+  assert.match(html, /只放在手機 App/);
+  assert.match(html, /Expo Go 封閉測試中/);
   assert.match(html, /當地續跑/);
   assert.match(html, /回附近熱區/);
   assert.match(html, /原路空返/);
-  assert.match(html, /Apple 地圖導航/);
-  assert.match(html, /Google 地圖導航/);
-  assert.match(html, /不包含流動執法/);
+  assert.doesNotMatch(html, /Apple 地圖導航|Google 地圖導航|開啟完整地圖/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
 });
 
@@ -107,10 +102,15 @@ test("uses official fixed-enforcement datasets and publishes their coverage", as
   assert.match(source, /max-age=1800/);
 });
 
-test("ships installable metadata and the current calculator defaults", async () => {
+test("shares one decision engine between the website and mobile app", async () => {
   const [manifestText, source] = await Promise.all([
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
-    readFile(new URL("../app/OrderCalculator.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../shared/order-engine.ts", import.meta.url), "utf8"),
+  ]);
+  const [landing, mobileEngine, quickDecision] = await Promise.all([
+    readFile(new URL("../app/ProductLanding.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../mobile/src/order-engine.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/quick-decision/route.ts", import.meta.url), "utf8"),
   ]);
   const manifest = JSON.parse(manifestText);
 
@@ -123,6 +123,9 @@ test("ships installable metadata and the current calculator defaults", async () 
   assert.match(source, /fullCostPerKm:\s*3/);
   assert.match(source, /greenHourly:\s*250/);
   assert.match(source, /yellowHourly:\s*200/);
+  assert.match(landing, /\.\.\/shared\/order-engine/);
+  assert.match(mobileEngine, /\.\.\/\.\.\/shared\/order-engine/);
+  assert.match(quickDecision, /\.\.\/\.\.\/\.\.\/shared\/order-engine/);
 });
 
 test("configures signed-in cloud records and beta feedback storage", async () => {

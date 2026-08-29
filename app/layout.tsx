@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://order-radar-tw.baka0406.chatgpt.site"),
   title: "接單雷達",
-  description: "台灣外送員的接單判斷、真實淨利、安全導航與公開執法設備提醒工具。",
+  description: "以手機 App 為核心的外送訂單判斷工具；網站提供測試說明與免安裝備用試算。",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -28,25 +27,25 @@ export const metadata: Metadata = {
     apple: "/icon-180.png",
   },
   openGraph: {
-    title: "接單雷達｜接單更精準，行車更安心",
-    description: "算清楚每張單的真實淨利，並查看沿途公開的固定測速與科技執法設備。",
+    title: "接單雷達｜接單前先算清楚",
+    description: "手機外送判單 App：計入成本、時間與回程情境，快速判斷訂單。",
     siteName: "接單雷達",
     locale: "zh_TW",
     type: "website",
     images: [
       {
-        url: "/og-navigation.png",
-        width: 1731,
+        url: "/og-mobile-app.png",
+        width: 1536,
         height: 909,
-        alt: "接單雷達，接單更精準，行車更安心",
+        alt: "接單雷達，接單前先算清楚",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     title: "接單雷達｜接單更精準，行車更安心",
-    description: "台灣外送員的接單判斷、淨利分析與安全導航工具。",
-    images: ["/og-navigation.png"],
+    description: "手機外送判單 App，網站提供測試說明與備用試算。",
+    images: ["/og-mobile-app.png"],
   },
 };
 
