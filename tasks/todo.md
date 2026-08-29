@@ -21,6 +21,11 @@
 - [x] 步驟 2：掃描目前內容與完整 Git 歷史中的敏感資訊
 - [x] 步驟 3：將對外 README 與 GitHub Repository 簡介改為英文
 - [x] 步驟 4：執行測試與建置驗證
-- [ ] 步驟 5：提交並推送文件變更
-- [ ] 步驟 6：將 Repository 可見性切換為 Public 並從訪客角度驗證
-- [ ] 步驟 7：更新 `CONTEXT.md` 交接紀錄
+- [x] 步驟 5：提交並推送文件變更
+- [x] 步驟 6：將 Repository 可見性切換為 Public 並從訪客角度驗證
+- [x] 步驟 7：更新 `CONTEXT.md` 交接紀錄
+
+## 任務回顧
+- `order-radar` 與 `finance-home` 均已改為 Public，GitHub Repository 簡介與主要 README 均使用英文。
+- 兩個 Repository 已啟用 GitHub secret scanning 與 push protection。
+- 完整歷史與 staged changes 均未偵測到敏感資訊。
