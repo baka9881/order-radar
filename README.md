@@ -1,7 +1,5 @@
 # Order Radar
 
-![Order Radar preview](public/og.png)
-
 Order Radar is a cost calculator and road-safety companion for delivery couriers in Taiwan, including riders working with Uber Eats and foodpanda. It estimates the real value of an order, displays live speed, and warns about fixed speed cameras and automated traffic-enforcement locations published by government sources.
 
 ## Core features
