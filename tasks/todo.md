@@ -13,3 +13,14 @@
 - 分支 `origin/codex/expo-go-sdk54` 已成功合併至 `main` 主分支。
 - 排除 `package.json`、`package-lock.json`、`NavigationScreen.tsx` 衝突，升級全螢幕 Map-First 雷達儀表板，並維持 Web 跨平台相容。
 - 雙端測試全數通過，主分支已成功推送至遠端 `origin/main`。
+
+# 公開專案與英文文件規劃
+
+## 待辦清單
+- [x] 步驟 1：盤點 Repository、對外文件與目前可見性
+- [x] 步驟 2：掃描目前內容與完整 Git 歷史中的敏感資訊
+- [x] 步驟 3：將對外 README 與 GitHub Repository 簡介改為英文
+- [x] 步驟 4：執行測試與建置驗證
+- [ ] 步驟 5：提交並推送文件變更
+- [ ] 步驟 6：將 Repository 可見性切換為 Public 並從訪客角度驗證
+- [ ] 步驟 7：更新 `CONTEXT.md` 交接紀錄

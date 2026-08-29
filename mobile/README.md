@@ -1,21 +1,21 @@
-# 接單雷達 iOS App
+# Order Radar iOS App
 
-這是接單雷達的 Expo／React Native 手機版，使用 Expo SDK 57。Windows 可完成日常開發、雲端建置與 App Store 上傳，不需要本機 Mac。
+This directory contains the Expo and React Native mobile version of Order Radar, built with Expo SDK 57. Routine development, cloud builds, and App Store submissions can be completed from Windows without a local Mac.
 
-## 已完成
+## Implemented features
 
-- 原生 Apple Maps 地圖與目的地標記
-- GPS 速度、前景語音／震動提醒
-- 使用者明確同意後的背景定位與本機通知
-- 1,849 筆政府公開固定設備離線快照
-- 勁戰七代 125 ABS／92 無鉛接單試算
-- 本機訂單紀錄、成本設定及一鍵清除
-- 開場分開記錄使用條款與自願匿名資料計畫選擇
-- 訂單資料先在手機區間化、每筆可撤回刪除、原始位置與路線不上傳
-- 1024×1024 RGB App Store 圖示、品牌啟動畫面、權限說明、EAS 建置設定
-- App Store 隱私、支援與送審文件
+- Native Apple Maps view with destination markers
+- GPS speed display with foreground voice and vibration alerts
+- Background location and local notifications after explicit user consent
+- Offline snapshot of 1,849 government-published fixed-enforcement locations
+- Delivery profitability model for a Yamaha Cygnus Gryphus 125 ABS using 92-octane fuel
+- Local order history, cost settings, and one-tap data deletion
+- Separate onboarding consent for the Terms of Service and optional anonymous data program
+- On-device location anonymization, per-record withdrawal, and no upload of raw routes
+- 1024×1024 RGB App Store icon, branded launch screen, permission copy, and EAS configuration
+- App Store privacy, support, and review documents
 
-## Windows 開發
+## Development on Windows
 
 ```powershell
 cd mobile
@@ -23,34 +23,34 @@ npm install
 npm start
 ```
 
-前景定位與地圖可先用 Expo Go 測試。背景定位無法在 Expo Go 執行，必須使用 EAS development build 安裝到真實 iPhone。
+Foreground location and map behaviour can initially be tested with Expo Go. Background location is unavailable in Expo Go and requires an EAS development build installed on a physical iPhone.
 
-## 驗證
+## Validation
 
 ```powershell
 npm run validate
 ```
 
-這會依序執行 TypeScript 檢查、核心計算測試及 iOS JavaScript bundle 匯出。
+This command runs TypeScript checking, core calculation tests, and an iOS JavaScript bundle export.
 
-## 更新政府公開設備快照
+## Refreshing the enforcement-location snapshot
 
-先在專案根目錄啟動網站 API，再執行同步：
+Start the website API from the project root, then run the synchronization command:
 
 ```powershell
 npm run dev
 npm run data:mobile
 ```
 
-## 沒有 Mac 的 iOS 建置
+## Building for iOS without a Mac
 
-1. 申請 Apple Developer Program，並建立 Expo 帳號。
-2. 在 `mobile` 執行 `npx eas-cli@latest login`。
-3. 執行 `npx eas-cli@latest init`，讓 Expo 寫入真實 `projectId`。
-4. 確認 `app.json` 的 `ios.bundleIdentifier` 屬於你的 Apple 帳號。
-5. 執行 `npm run build:ios:dev`，安裝到 iPhone 做背景定位道路測試。
-6. 測試通過後執行 `npm run build:ios` 與 `npm run submit:ios`。
+1. Join the Apple Developer Program and create an Expo account.
+2. Run `npx eas-cli@latest login` in the `mobile` directory.
+3. Run `npx eas-cli@latest init` so Expo can write a valid `projectId`.
+4. Confirm that the `ios.bundleIdentifier` in `app.json` belongs to your Apple account.
+5. Run `npm run build:ios:dev` and install the build on an iPhone for background-location road testing.
+6. After testing, run `npm run build:ios` followed by `npm run submit:ios`.
 
-Apple／Expo 登入資訊、憑證、`.p8`、`.p12`、provisioning profile 與密碼不可提交到 Git。
+Never commit Apple or Expo credentials, passwords, `.p8` or `.p12` files, or provisioning profiles.
 
-送審前逐項完成 [APP_STORE_CHECKLIST.md](./APP_STORE_CHECKLIST.md)。
+Before submission, complete every item in [APP_STORE_CHECKLIST.md](./APP_STORE_CHECKLIST.md).

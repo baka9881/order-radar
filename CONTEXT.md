@@ -12,3 +12,11 @@
 ## 雙端執行與測試
 - **Web 端** (`app/`, 埠號 `3000`)：`npm run dev` / `npm test`（6/6 通過）
 - **Mobile 端** (`mobile/`, 埠號 `8081`)：`npx expo start --web` / `npm test`（8/8 通過）
+
+## 2026-08-29 公開作品準備
+- 根目錄與 Mobile README 已改為英文，供 GitHub 作品集與課程評閱使用。
+- 使用 Gitleaks 8.30.1 掃描完整 Git 歷史（18 commits），未發現密鑰或憑證。
+- 修正 `mobile/package-lock.json` 與 `package.json` 不同步，`npm ci` 已可重現安裝。
+- Web：`npm test` 通過（6/6），production build 成功。
+- Mobile：TypeScript 檢查通過、Vitest 通過（8/8）、iOS bundle 匯出成功。
+- npm audit 仍回報根目錄 21 個與 Mobile 17 個相依套件弱點；未執行可能造成 breaking changes 的 `npm audit fix --force`。
