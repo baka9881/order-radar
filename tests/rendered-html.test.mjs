@@ -59,6 +59,7 @@ test("server-renders the mobile-first product landing page", async () => {
   assert.match(html, /每張單先看懂/);
   assert.match(html, /iPhone 測試版/);
   assert.match(html, /Android 測試版/);
+  assert.match(html, /landing-mobile-download/);
   assert.match(html, /導航與執法提醒/);
   assert.match(html, /為什麼要使用/);
   assert.match(html, /秒懂這張單/);

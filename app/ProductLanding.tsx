@@ -52,6 +52,7 @@ export function ProductLanding() {
           <a href="#calculator">備用試算</a>
           <a className="landing-download-link" href="#expo-test">測試版</a>
         </nav>
+        <a className="landing-mobile-download" href="#expo-test">測試版</a>
       </header>
 
       <section className="landing-hero" id="top">
