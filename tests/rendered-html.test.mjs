@@ -60,8 +60,12 @@ test("server-renders the mobile-first product landing page", async () => {
   assert.match(html, /iPhone 測試版/);
   assert.match(html, /Android 測試版/);
   assert.match(html, /導航與執法提醒/);
-  assert.match(html, /免安裝備用工具/);
-  assert.match(html, /只放在手機 App/);
+  assert.match(html, /為什麼要使用/);
+  assert.match(html, /秒懂這張單/);
+  assert.match(html, /回程一起計算/);
+  assert.match(html, /安全設備提醒/);
+  assert.match(html, /免安裝，填入四個數字/);
+  assert.match(html, /先算一張單/);
   assert.match(html, /Expo Go 封閉測試中/);
   assert.match(html, /當地續跑/);
   assert.match(html, /回附近熱區/);

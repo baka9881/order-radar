@@ -98,16 +98,24 @@ export function ProductLanding() {
         </div>
       </section>
 
-      <section className="product-role" aria-label="產品分工">
-        <article><span>01</span><strong>手機 App</strong><p>實際跑單使用：即時判單、定位、導航與公開執法設備提醒。</p></article>
-        <article><span>02</span><strong>這個網站</strong><p>產品入口、條款客服，以及手機臨時不方便時的備用試算。</p></article>
-        <article><span>03</span><strong>同一套公式</strong><p>網站與 App 共用成本、回程與紅黃綠門檻，不再各算各的。</p></article>
+      <section className="app-features why-section" id="app-features">
+        <div className="why-heading">
+          <h2>為什麼要使用</h2>
+          <p>把外送員接單前最需要知道的資訊，整理成幾秒就能看懂的答案。</p>
+        </div>
+        <div className="why-grid">
+          <article><span aria-hidden="true">✓</span><h3>秒懂這張單</h3><p>輸入金額、公里與時間，直接顯示接、看或拒。</p></article>
+          <article><span aria-hidden="true">✓</span><h3>回程一起計算</h3><p>把續跑、回熱區或空車返程的成本一起算進去。</p></article>
+          <article><span aria-hidden="true">✓</span><h3>看懂真正收益</h3><p>同時查看完整淨時薪、淨利與每公里收益。</p></article>
+          <article><span aria-hidden="true">✓</span><h3>導航不中斷</h3><p>跑單途中保留定位、導航與下一步行程資訊。</p></article>
+          <article><span aria-hidden="true">✓</span><h3>安全設備提醒</h3><p>顯示公開固定測速與科技執法設備，降低漏看風險。</p></article>
+          <article><span aria-hidden="true">✓</span><h3>紀錄接單表現</h3><p>收工後回顧訂單品質，慢慢找出適合自己的門檻。</p></article>
+        </div>
       </section>
 
       <section className="backup-calculator" id="calculator">
-        <div className="backup-heading">
-          <div><span className="landing-kicker">免安裝備用工具</span><h2>快速試算這張訂單</h2></div>
-          <p>出門跑單仍建議使用手機 App；這裡適合桌面規劃或臨時查算。</p>
+        <div className="backup-heading simple-section-heading">
+          <div><h2>先算一張單</h2><p>免安裝，填入四個數字就能看到結果。</p></div>
         </div>
         <div className="backup-layout">
           <div className="backup-form">
@@ -140,17 +148,8 @@ export function ProductLanding() {
         </div>
       </section>
 
-      <section className="app-features" id="app-features">
-        <div><span className="landing-kicker">只放在手機 App</span><h2>真正跑單時需要的功能</h2></div>
-        <div className="feature-grid">
-          <article><span>即時</span><h3>訂單出現就判斷</h3><p>辨識金額、距離與時間，直接顯示接、看或拒。</p></article>
-          <article><span>途中</span><h3>導航與安全提醒</h3><p>前景定位、語音提示，以及公開固定測速與科技執法資料。</p></article>
-          <article><span>收工</span><h3>本機訂單紀錄</h3><p>回顧淨時薪與接單品質，匿名資料計畫維持可選擇。</p></article>
-        </div>
-      </section>
-
       <section className="expo-test" id="expo-test">
-        <div><span className="landing-kicker">目前階段</span><h2>Expo Go 封閉測試中</h2></div>
+        <div className="simple-section-heading"><h2>如何開始測試</h2><p>目前先使用 Expo Go 體驗主要功能。</p></div>
         <ol>
           <li><span>1</span><p><strong>安裝 Expo Go</strong>目前用來確認 iPhone 介面、試算、地圖與前景定位。</p></li>
           <li><span>2</span><p><strong>使用測試 QR</strong>受邀測試者沿用原本 QR，不必每次更換。</p></li>
