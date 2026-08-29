@@ -55,7 +55,11 @@ test("server-renders the mobile-first product landing page", async () => {
   const html = await response.text();
   assert.match(html, /<title>接單雷達｜手機外送判單工具<\/title>/i);
   assert.match(html, /接單雷達/);
-  assert.match(html, /手機 App 是主產品/);
+  assert.match(html, /跑單不靠猜/);
+  assert.match(html, /每張單先看懂/);
+  assert.match(html, /iPhone 測試版/);
+  assert.match(html, /Android 測試版/);
+  assert.match(html, /導航與執法提醒/);
   assert.match(html, /免安裝備用工具/);
   assert.match(html, /只放在手機 App/);
   assert.match(html, /Expo Go 封閉測試中/);

@@ -48,39 +48,51 @@ export function ProductLanding() {
           <div><strong>接單雷達</strong><small>外送夥伴的行動判單工具</small></div>
         </a>
         <nav aria-label="主要導覽">
+          <a href="#app-features">功能</a>
           <a href="#calculator">備用試算</a>
-          <a href="#app-features">App 功能</a>
-          <a href="/support">測試回報</a>
+          <a className="landing-download-link" href="#expo-test">測試版</a>
         </nav>
-        <span className="landing-beta">EXPO BETA</span>
       </header>
 
       <section className="landing-hero" id="top">
         <div className="landing-hero-copy">
-          <span className="landing-kicker">手機 App 是主產品</span>
-          <h1>接單前幾秒，<br />先算清楚再出發。</h1>
-          <p>依金額、公里、預估時間與回程情境，即時判斷這張單值得接、要觀察，還是先拒絕。</p>
+          <span className="landing-kicker landing-kicker-pill">✦ 為外送員打造的行動判單 App</span>
+          <h1><span>跑單不靠猜，</span><em>每張單先看懂。</em></h1>
+          <p>輸入金額、公里、預估時間與回程情境，幾秒內判斷值得接、要觀察，還是先拒絕。</p>
           <div className="landing-actions">
-            <a className="landing-primary" href="#expo-test">了解手機測試版</a>
-            <a className="landing-secondary" href="#calculator">先用網頁試算</a>
+            <a className="landing-primary" href="#expo-test"><span aria-hidden="true">●</span> iPhone 測試版</a>
+            <a className="landing-secondary" href="#expo-test"><span aria-hidden="true">▶</span> Android 測試版</a>
           </div>
+          <small className="landing-trust"><i aria-hidden="true">✓</i> Expo Go 封閉測試中 · 測試 QR 持續有效</small>
           <small className="landing-honesty">網頁不會在背景讀取 Uber Eats；即時通知與行車功能由手機 App 負責。</small>
         </div>
 
         <div className={`app-preview signal-${result.signal}`} aria-label="手機 App 判單畫面預覽">
-          <div className="app-preview-status"><span>接單雷達</span><b>判單</b></div>
-          <div className="app-preview-copy">
-            <small>這張訂單</small>
-            <strong>{status.action}</strong>
-            <span>{status.label}</span>
+          <div className="phone-statusbar"><strong>9:41</strong><span>接單雷達</span><b>● ●</b></div>
+          <div className="phone-map" aria-hidden="true">
+            <span className="phone-map-pill">導航與執法提醒</span>
+            <i className="phone-road phone-road-a" />
+            <i className="phone-road phone-road-b" />
+            <i className="phone-road phone-road-c" />
+            <i className="phone-route" />
+            <b className="phone-marker phone-marker-speed">測</b>
+            <b className="phone-marker phone-marker-tech">科</b>
+            <b className="phone-marker phone-marker-shop">取</b>
+            <span className="phone-position" />
+            <small className="phone-place phone-place-a">板橋</small>
+            <small className="phone-place phone-place-b">新莊</small>
+            <small className="phone-place phone-place-c">中和</small>
           </div>
-          <div className="app-preview-metrics">
-            <div><small>完整淨時薪</small><strong>${formatNumber(result.fullHourly)}</strong></div>
-            <div><small>每公里</small><strong>${formatNumber(result.perKm, 1)}</strong></div>
-          </div>
-          <div className="app-preview-trip">
-            <span>{RETURN_MODES[returnMode].label}</span>
-            <strong>{formatNumber(result.effectiveDistance, 1)} km · {formatNumber(result.effectiveMinutes)} 分</strong>
+          <div className="phone-decision-card">
+            <div className="phone-order-row">
+              <div><small>訂單金額</small><strong>${formatNumber(amount)}</strong></div>
+              <span>{status.action}</span>
+            </div>
+            <div className="phone-metrics">
+              <span>淨時薪 <b>${formatNumber(result.fullHourly)}</b></span>
+              <span>每公里 <b>${formatNumber(result.perKm, 1)}</b></span>
+            </div>
+            <p>{status.label} · {RETURN_MODES[returnMode].label} · {formatNumber(result.effectiveDistance, 1)} km</p>
           </div>
           <div className="app-preview-tabs"><span>導航</span><b>判單</b><span>紀錄</span></div>
         </div>
