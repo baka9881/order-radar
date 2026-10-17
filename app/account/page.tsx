@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { acceptInvite, getSettings, getUser, handleAuthCallback, login, logout, oauthLogin, requestPasswordRecovery, signup, updateUser, type Settings, type User } from "@netlify/identity";
 
 export default function AccountPage() {
@@ -72,7 +73,7 @@ export default function AccountPage() {
   const passwordOnly = mode === "reset" || mode === "invite";
   const title = { login: "會員登入", signup: "建立帳號", forgot: "忘記密碼", reset: "設定新密碼", invite: "接受邀請" }[mode];
   return <main className="account-page">
-    <a href="/">← 回接單雷達</a>
+    <Link href="/">← 回接單雷達</Link>
     <h1>{user && !passwordOnly ? "我的帳號" : title}</h1>
     {message && <p role="status">{message}</p>}
     {user && !passwordOnly ? <>
