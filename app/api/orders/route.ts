@@ -50,6 +50,9 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "請先登入" }, { status: 401 });
+  if (request.headers.get("origin") !== new URL(request.url).origin) {
+    return Response.json({ error: "請從本站操作" }, { status: 403 });
+  }
 
   const payload = (await request.json()) as OrderPayload;
   const id = payload.id?.trim() ?? "";
@@ -98,6 +101,9 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: "請先登入" }, { status: 401 });
+  if (request.headers.get("origin") !== new URL(request.url).origin) {
+    return Response.json({ error: "請從本站操作" }, { status: 403 });
+  }
 
   const id = new URL(request.url).searchParams.get("id")?.trim() ?? "";
   if (!id) return Response.json({ error: "缺少訂單編號" }, { status: 400 });
