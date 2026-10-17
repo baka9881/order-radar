@@ -161,7 +161,7 @@ export function ProductLanding() {
 
       <footer className="landing-footer">
         <div><strong>接單雷達</strong><span>目前為測試工具，不保證平台顯示金額、交通時間或公開設備資料永遠完整。</span></div>
-        <nav><a href="/privacy">隱私權</a><a href="/terms">使用條款</a><a href="/support">客服與回報</a></nav>
+        <nav><a href="/account">會員帳號</a><a href="/privacy">隱私權</a><a href="/terms">使用條款</a><a href="/support">客服與回報</a></nav>
       </footer>
     </main>
   );

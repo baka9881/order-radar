@@ -1,10 +1,12 @@
 # 接單雷達
 
+> 2026-10-18：網站已準備遷移至 Netlify，最新操作以 [NETLIFY_MIGRATION.md](./NETLIFY_MIGRATION.md) 為準。下方 Sites／Workers／ChatGPT 登入段落僅為舊版架構紀錄，不適用新部署。
+
 臺灣外送員的接單成本試算、安全導航與政府公開固定執法設備提醒工具。
 
 專案包含兩個產品表面：
 
-- 根目錄：以 vinext／Cloudflare Workers 執行的網站、API、雲端訂單及回饋。
+- 根目錄：以 Next.js／Netlify 執行的網站、API、雲端訂單及回饋。
 - `mobile/`：Expo SDK 57／React Native iOS App，使用 Apple Maps、裝置內資料及 EAS 雲端建置。
 
 ## Prerequisites
@@ -105,7 +107,7 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 ## Useful Commands
 
 - `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
+- `npm run build`: verify the Next.js build output
 - `npm test`: build the website and verify rendered product routes
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 - `npm run data:mobile`: refresh the mobile offline enforcement snapshot while the local website API is running

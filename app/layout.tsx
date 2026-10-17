@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthCallback } from "./AuthCallback";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://order-radar-tw.baka0406.chatgpt.site"),
+  metadataBase: new URL("https://order-radar-tw.netlify.app"),
   title: "接單雷達",
   description: "以手機 App 為核心的外送訂單判斷工具；網站提供測試說明與免安裝備用試算。",
   manifest: "/manifest.webmanifest",
@@ -65,6 +66,7 @@ export default function RootLayout({
   return (
     <html lang="zh-Hant">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
+        <AuthCallback />
         {children}
       </body>
     </html>

@@ -1,28 +1,34 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import test, { before, after } from "node:test";
+import { spawn } from "node:child_process";
+
+let server;
+const base = "http://127.0.0.1:3197";
+before(async () => {
+  server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3197", "-H", "127.0.0.1"], { stdio: "pipe" });
+  let output = "";
+  server.stdout.on("data", (chunk) => { output += chunk; });
+  server.stderr.on("data", (chunk) => { output += chunk; });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (server.exitCode !== null) throw new Error(output);
+    try { if ((await fetch(base)).ok) return; } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(`Next server did not start: ${output}`);
+});
+after(() => server?.kill());
 
 async function render(path = "/", init = {}) {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request(`http://localhost${path}`, {
-      headers: { accept: "text/html", ...(init.headers ?? {}) },
-      ...init,
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+  return fetch(`${base}${path}`, { ...init, headers: { accept: "text/html", ...(init.headers ?? {}) } });
 }
+
+test("rejects forged Sites identity headers on the independent host", async () => {
+  for (const path of ["/api/me", "/api/orders"]) {
+    const response = await render(path, { headers: { "oai-authenticated-user-id": "forged", "oai-authenticated-user-email": "fake@example.com" } });
+    assert.equal(response.status, 401);
+  }
+});
 
 test("returns an immediate Shortcut decision from cropped OCR text", async () => {
   const response = await render("/api/quick-decision", {

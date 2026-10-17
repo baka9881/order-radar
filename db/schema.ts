@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, pgTable, text, boolean } from "drizzle-orm/pg-core";
 
-export const profiles = sqliteTable("profiles", {
+export const profiles = pgTable("profiles", {
   userId: text("user_id").primaryKey(),
   email: text("email").notNull(),
   displayName: text("display_name").notNull(),
@@ -10,7 +10,7 @@ export const profiles = sqliteTable("profiles", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const orders = sqliteTable(
+export const orders = pgTable(
   "orders",
   {
     id: text("id").primaryKey(),
@@ -20,7 +20,7 @@ export const orders = sqliteTable(
     distance: real("distance").notNull(),
     minutes: real("minutes").notNull(),
     extraWait: real("extra_wait").notNull().default(0),
-    returnRisk: integer("return_risk", { mode: "boolean" }).notNull().default(false),
+    returnRisk: boolean("return_risk").notNull().default(false),
     returnMode: text("return_mode", { enum: ["local", "hotspot", "full"] }).notNull().default("local"),
     signal: text("signal", { enum: ["green", "yellow", "red"] }).notNull(),
     fullHourly: real("full_hourly").notNull(),
@@ -29,7 +29,7 @@ export const orders = sqliteTable(
   (table) => [index("idx_orders_user_created").on(table.userId, table.createdAt)],
 );
 
-export const feedback = sqliteTable(
+export const feedback = pgTable(
   "feedback",
   {
     id: text("id").primaryKey(),
@@ -44,7 +44,7 @@ export const feedback = sqliteTable(
   (table) => [index("idx_feedback_created").on(table.createdAt)],
 );
 
-export const marketContributions = sqliteTable(
+export const marketContributions = pgTable(
   "market_contributions",
   {
     receiptId: text("receipt_id").primaryKey(),

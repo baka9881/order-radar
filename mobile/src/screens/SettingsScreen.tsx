@@ -6,7 +6,7 @@ import { saveSettings } from "../storage";
 import { COLORS, commonStyles } from "../theme";
 import type { CalculatorSettings } from "../types";
 
-const SITE_URL = "https://order-radar-tw.baka0406.chatgpt.site";
+const SITE_URL = "https://order-radar-tw.netlify.app";
 
 type Props = {
   settings: CalculatorSettings;
