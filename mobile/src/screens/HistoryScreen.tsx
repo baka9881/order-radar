@@ -1,5 +1,5 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { formatNumber, STATUS } from "../order-engine";
+import { formatNumber, getTripMultiplier, normalizeReturnMode, RETURN_MODES, STATUS } from "../order-engine";
 import { COLORS, commonStyles } from "../theme";
 import type { HistoryItem } from "../types";
 
@@ -9,8 +9,9 @@ export function HistoryScreen({ history }: Props) {
   const totals = history.reduce(
     (sum, item) => {
       sum.amount += item.amount;
-      sum.minutes += item.minutes + item.extraWait;
-      sum.distance += item.distance * (item.returnRisk ? 1.3 : 1);
+      const multiplier = getTripMultiplier(item);
+      sum.minutes += item.minutes * multiplier + item.extraWait;
+      sum.distance += item.distance * multiplier;
       sum.green += item.signal === "green" ? 1 : 0;
       return sum;
     },
@@ -43,7 +44,9 @@ export function HistoryScreen({ history }: Props) {
             <View style={[styles.signal, { backgroundColor: `${color}20` }]}><Text style={{ color, fontWeight: "900" }}>{STATUS[item.signal].action}</Text></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.itemTitle}>${formatNumber(item.amount)} · {formatNumber(item.distance, 1)} km</Text>
-              <Text style={styles.itemMeta}>{new Date(item.createdAt).toLocaleString("zh-TW")} · {item.minutes + item.extraWait} 分鐘</Text>
+              <Text style={styles.itemMeta}>
+                {new Date(item.createdAt).toLocaleString("zh-TW")} · {RETURN_MODES[normalizeReturnMode(item.returnMode, item.returnRisk)].label}
+              </Text>
             </View>
             <View style={{ alignItems: "flex-end" }}>
               <Text style={styles.itemTitle}>${formatNumber(item.fullHourly)}/h</Text>

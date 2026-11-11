@@ -1,4 +1,4 @@
-const CACHE_NAME = "order-radar-v1";
+const CACHE_NAME = "order-radar-netlify-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -17,6 +17,8 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/") || url.pathname.startsWith("/.netlify/") || url.pathname.startsWith("/account")) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {

@@ -1,46 +1,83 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import test, { before, after } from "node:test";
+import { spawn } from "node:child_process";
 
-async function render(path = "/") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+let server;
+const base = "http://127.0.0.1:3197";
+before(async () => {
+  server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", "3197", "-H", "127.0.0.1"], { stdio: "pipe" });
+  let output = "";
+  server.stdout.on("data", (chunk) => { output += chunk; });
+  server.stderr.on("data", (chunk) => { output += chunk; });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (server.exitCode !== null) throw new Error(output);
+    try { if ((await fetch(base)).ok) return; } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  throw new Error(`Next server did not start: ${output}`);
+});
+after(() => server?.kill());
 
-  return worker.fetch(
-    new Request(`http://localhost${path}`, {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+async function render(path = "/", init = {}) {
+  return fetch(`${base}${path}`, { ...init, headers: { accept: "text/html", ...(init.headers ?? {}) } });
 }
 
-test("server-renders the order calculator", async () => {
+test("rejects forged Sites identity headers on the independent host", async () => {
+  for (const path of ["/api/me", "/api/orders"]) {
+    const response = await render(path, { headers: { "oai-authenticated-user-id": "forged", "oai-authenticated-user-email": "fake@example.com" } });
+    assert.equal(response.status, 401);
+  }
+});
+
+test("returns an immediate Shortcut decision from cropped OCR text", async () => {
+  const response = await render("/api/quick-decision", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({
+      text: "包裹 $795 4.95 包含基本報酬加成 $136.00 總計 1 小時 3 分鐘 (29.8 公里)",
+    }),
+  });
+  const result = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(result.signal, "yellow");
+  assert.equal(result.action, "看情況");
+  assert.equal(result.amount, 795);
+  assert.equal(result.distance, 29.8);
+  assert.equal(result.minutes, 63);
+  assert.equal(result.returnMode, "full");
+  assert.equal(result.returnRisk, true);
+  assert.equal(result.effectiveDistance, 59.6);
+  assert.equal(result.effectiveMinutes, 126);
+  assert.match(result.message, /^看情況｜淨時薪 \$293｜每公里 \$13\.3$/);
+});
+
+test("server-renders the mobile-first product landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>接單雷達｜外送訂單試算與安全導航<\/title>/i);
+  assert.match(html, /<title>接單雷達｜手機外送判單工具<\/title>/i);
   assert.match(html, /接單雷達/);
-  assert.match(html, /勁戰七代 125 ABS/);
-  assert.match(html, /輸入派單資訊/);
-  assert.match(html, /貼上 OCR 文字/);
-  assert.match(html, /你真正留下多少/);
-  assert.match(html, /核心免費，進階分析才收費/);
-  assert.match(html, /哪個功能值得你付費/);
-  assert.match(html, /定位、導航與執法提醒/);
-  assert.match(html, /Apple 地圖導航/);
-  assert.match(html, /Google 地圖導航/);
-  assert.match(html, /不包含流動執法/);
+  assert.match(html, /跑單不靠猜/);
+  assert.match(html, /每張單先看懂/);
+  assert.match(html, /iPhone 測試版/);
+  assert.match(html, /Android 測試版/);
+  assert.match(html, /landing-mobile-download/);
+  assert.match(html, /導航與執法提醒/);
+  assert.match(html, /為什麼要使用/);
+  assert.match(html, /秒懂這張單/);
+  assert.match(html, /回程一起計算/);
+  assert.match(html, /安全設備提醒/);
+  assert.match(html, /免安裝，填入四個數字/);
+  assert.match(html, /先算一張單/);
+  assert.match(html, /Expo Go 封閉測試中/);
+  assert.match(html, /當地續跑/);
+  assert.match(html, /回附近熱區/);
+  assert.match(html, /原路空返/);
+  assert.doesNotMatch(html, /Apple 地圖導航|Google 地圖導航|開啟完整地圖/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
 });
 
@@ -70,14 +107,25 @@ test("uses official fixed-enforcement datasets and publishes their coverage", as
   assert.match(source, /data\.gov\.tw\/dataset\/7320/);
   assert.match(source, /data\.gov\.tw\/dataset\/135957/);
   assert.match(source, /data\.gov\.tw\/dataset\/126156/);
+  assert.match(source, /data\.gov\.tw\/dataset\/124139/);
+  assert.match(source, /data\.gov\.tw\/dataset\/178144/);
+  assert.match(source, /data\.gov\.tw\/dataset\/178159/);
+  assert.match(source, /data\.gov\.tw\/dataset\/178168/);
+  assert.match(source, /data\.gov\.tw\/dataset\/173210/);
   assert.match(source, /data\.gov\.tw\/dataset\/170673/);
+  assert.match(source, /query\.get\("all"\) === "1"/);
   assert.match(source, /max-age=1800/);
 });
 
-test("ships installable metadata and the current calculator defaults", async () => {
+test("shares one decision engine between the website and mobile app", async () => {
   const [manifestText, source] = await Promise.all([
     readFile(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"),
-    readFile(new URL("../app/OrderCalculator.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../shared/order-engine.ts", import.meta.url), "utf8"),
+  ]);
+  const [landing, mobileEngine, quickDecision] = await Promise.all([
+    readFile(new URL("../app/ProductLanding.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../mobile/src/order-engine.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/quick-decision/route.ts", import.meta.url), "utf8"),
   ]);
   const manifest = JSON.parse(manifestText);
 
@@ -90,6 +138,9 @@ test("ships installable metadata and the current calculator defaults", async () 
   assert.match(source, /fullCostPerKm:\s*3/);
   assert.match(source, /greenHourly:\s*250/);
   assert.match(source, /yellowHourly:\s*200/);
+  assert.match(landing, /\.\.\/shared\/order-engine/);
+  assert.match(mobileEngine, /\.\.\/\.\.\/shared\/order-engine/);
+  assert.match(quickDecision, /\.\.\/\.\.\/\.\.\/shared\/order-engine/);
 });
 
 test("configures signed-in cloud records and beta feedback storage", async () => {

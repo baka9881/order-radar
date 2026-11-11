@@ -1,4 +1,12 @@
-export type Signal = "green" | "yellow" | "red";
+import type {
+  CalculatorSettings,
+  OrderInput,
+  OrderResult,
+  ReturnMode,
+  Signal,
+} from "../../shared/order-engine";
+
+export type { CalculatorSettings, OrderInput, OrderResult, ReturnMode, Signal };
 
 export type Coordinates = {
   latitude: number;
@@ -27,40 +35,6 @@ export type EnforcementDataset = {
     available: boolean;
     total: number;
   }>;
-};
-
-export type CalculatorSettings = {
-  fuelPrice: number;
-  fuelEconomy: number;
-  cashCostPerKm: number;
-  fullCostPerKm: number;
-  greenHourly: number;
-  yellowHourly: number;
-  greenPerKm: number;
-  yellowPerKm: number;
-};
-
-export type OrderInput = {
-  amount: number;
-  distance: number;
-  minutes: number;
-  extraWait: number;
-  returnRisk: boolean;
-};
-
-export type OrderResult = {
-  signal: Signal;
-  effectiveDistance: number;
-  effectiveMinutes: number;
-  fuelPerKm: number;
-  fuelCost: number;
-  cashNet: number;
-  fullNet: number;
-  cashHourly: number;
-  fullHourly: number;
-  perKm: number;
-  greenMinimum: number;
-  yellowMinimum: number;
 };
 
 export type HistoryItem = OrderInput & {

@@ -3,7 +3,7 @@ import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-na
 import { COLORS, commonStyles } from "../theme";
 import type { DataProgramStatus } from "../types";
 
-const SITE_URL = "https://order-radar-tw.baka0406.chatgpt.site";
+const SITE_URL = "https://order-radar-tw.netlify.app";
 
 type Props = {
   onComplete: (dataProgramStatus: DataProgramStatus) => Promise<void>;

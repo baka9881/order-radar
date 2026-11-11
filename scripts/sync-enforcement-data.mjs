@@ -6,41 +6,42 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(projectRoot, "mobile/assets/enforcement.json");
 const apiBase = process.env.ENFORCEMENT_API_URL ?? "http://localhost:3000/api/enforcement";
 
-const centers = [
-  { name: "北北基桃", latitude: 25.05, longitude: 121.49 },
-  { name: "新竹苗栗", latitude: 24.71, longitude: 120.98 },
-  { name: "臺中彰化南投", latitude: 24.15, longitude: 120.68 },
-  { name: "雲林嘉義", latitude: 23.56, longitude: 120.43 },
-  { name: "臺南高雄", latitude: 22.78, longitude: 120.28 },
-  { name: "屏東", latitude: 22.55, longitude: 120.55 },
-  { name: "宜蘭花蓮", latitude: 24.11, longitude: 121.51 },
-  { name: "臺東", latitude: 22.76, longitude: 121.14 },
+const requiredNorthSources = [
+  "警政署全國測速執法設置點",
+  "臺北市智慧管理科技執法設備",
+  "新北市區間平均速率執法設備",
+  "新北市違規停車自動偵測系統",
+  "桃園市科技執法設備地點",
+  "基隆市科技執法取締地點",
+  "基隆市區間平均速率執法",
+  "新竹市科技執法點位資訊",
+  "新竹縣違規停車自動執法設備",
 ];
 
-async function loadArea(center) {
+async function loadSnapshot() {
   const url = new URL(apiBase);
-  url.searchParams.set("lat", String(center.latitude));
-  url.searchParams.set("lng", String(center.longitude));
-  url.searchParams.set("radius", "80");
+  url.searchParams.set("all", "1");
   const response = await fetch(url, { headers: { accept: "application/json" } });
-  if (!response.ok) throw new Error(`${center.name}：API 回傳 ${response.status}`);
+  if (!response.ok) throw new Error(`執法資料 API 回傳 ${response.status}`);
   return response.json();
 }
 
-const snapshots = await Promise.all(centers.map(loadArea));
-const byId = new Map();
-for (const snapshot of snapshots) {
-  for (const point of snapshot.points ?? []) byId.set(point.id, point);
+const snapshot = await loadSnapshot();
+const missingNorthSources = requiredNorthSources.filter((label) => {
+  const source = snapshot.sources?.find((candidate) => candidate.label === label);
+  return !source?.available || source.total < 1;
+});
+if (missingNorthSources.length) {
+  throw new Error(`北部官方資料未完整載入：${missingNorthSources.join("、")}`);
 }
 
-const sources = [...new Map(
-  snapshots.flatMap((snapshot) => snapshot.sources ?? []).map((source) => [source.label, source]),
-).values()];
+const byId = new Map();
+for (const point of snapshot.points ?? []) byId.set(point.id, point);
 
 const payload = {
   generatedAt: new Date().toISOString(),
   notice: "政府公開固定設備離線快照；可能延遲或缺漏，請以現場標誌、號誌與速限為準。",
-  sources,
+  sources: snapshot.sources ?? [],
   points: [...byId.values()].sort((a, b) => a.city.localeCompare(b.city, "zh-Hant")),
 };
 

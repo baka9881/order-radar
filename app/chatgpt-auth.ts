@@ -1,4 +1,4 @@
-import { headers } from "next/headers";
+import { getUser } from "@netlify/identity";
 import { redirect } from "next/navigation";
 
 export type ChatGPTUser = {
@@ -8,34 +8,19 @@ export type ChatGPTUser = {
   fullName: string | null;
 };
 
-const USER_ID_HEADER = "oai-authenticated-user-id";
-const USER_EMAIL_HEADER = "oai-authenticated-user-email";
-const USER_FULL_NAME_HEADER = "oai-authenticated-user-full-name";
-const USER_FULL_NAME_ENCODING_HEADER =
-  "oai-authenticated-user-full-name-encoding";
-const PERCENT_ENCODED_UTF8 = "percent-encoded-utf-8";
-const SIGN_IN_PATH = "/signin-with-chatgpt";
-const SIGN_OUT_PATH = "/signout-with-chatgpt";
+const SIGN_IN_PATH = "/account";
+const SIGN_OUT_PATH = "/account";
 const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get(USER_ID_HEADER);
-  const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (!userId || !email) return null;
-
-  const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get(USER_FULL_NAME_ENCODING_HEADER) === PERCENT_ENCODED_UTF8
-      ? safeDecodeURIComponent(encodedFullName)
-      : null;
-
+  // Never trust caller-supplied Sites headers on an independent host.
+  const user = await getUser();
+  if (!user?.id || !user.email) return null;
   return {
-    userId,
-    displayName: fullName ?? email,
-    email,
-    fullName,
+    userId: user.id,
+    displayName: user.name || user.email,
+    email: user.email,
+    fullName: user.name || null,
   };
 }
 
@@ -81,10 +66,3 @@ function isReservedAuthPath(pathname: string): boolean {
   );
 }
 
-function safeDecodeURIComponent(value: string): string | null {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return null;
-  }
-}

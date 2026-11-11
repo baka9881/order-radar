@@ -13,6 +13,7 @@ import { OnboardingScreen } from "./src/screens/OnboardingScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { deleteMarketContributions } from "./src/market-data";
 import { IS_EXPO_GO } from "./src/runtime";
+import { stopOrderCapture } from "./src/order-capture";
 import {
   clearLocalData,
   DATA_PROGRAM_CONSENT_VERSION,
@@ -121,6 +122,7 @@ export default function App() {
   };
 
   const clearEverything = async () => {
+    await stopOrderCapture();
     if (!IS_EXPO_GO && await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
       await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     }
@@ -141,6 +143,7 @@ export default function App() {
           onOpenCalculator={() => setTab("calculator")}
           onOpenHistory={() => setTab("history")}
           onOpenSettings={() => setTab("settings")}
+          settings={settings}
         />
       );
     }

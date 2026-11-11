@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { NumericField } from "../components/NumericField";
 import { submitMarketContribution } from "../market-data";
-import { calculateOrder, formatNumber, STATUS } from "../order-engine";
+import { calculateOrder, formatNumber, RETURN_MODES, STATUS } from "../order-engine";
 import { saveHistory } from "../storage";
 import { COLORS, commonStyles } from "../theme";
-import type { CalculatorSettings, HistoryItem } from "../types";
+import type { CalculatorSettings, HistoryItem, ReturnMode } from "../types";
 
 type Props = {
   settings: CalculatorSettings;
@@ -30,10 +30,10 @@ export function CalculatorScreen({
   const [distance, setDistance] = useState(8.4);
   const [minutes, setMinutes] = useState(35);
   const [extraWait, setExtraWait] = useState(0);
-  const [returnRisk, setReturnRisk] = useState(false);
+  const [returnMode, setReturnMode] = useState<ReturnMode>("local");
   const result = useMemo(
-    () => calculateOrder({ amount, distance, minutes, extraWait, returnRisk }, settings),
-    [amount, distance, minutes, extraWait, returnRisk, settings],
+    () => calculateOrder({ amount, distance, minutes, extraWait, returnMode }, settings),
+    [amount, distance, minutes, extraWait, returnMode, settings],
   );
   const signalColor = result.signal === "green" ? COLORS.green : result.signal === "yellow" ? COLORS.yellow : COLORS.red;
 
@@ -45,7 +45,8 @@ export function CalculatorScreen({
       distance,
       minutes,
       extraWait,
-      returnRisk,
+      returnMode,
+      returnRisk: returnMode !== "local",
       signal: result.signal,
       fullHourly: result.fullHourly,
       perKm: result.perKm,
@@ -98,17 +99,30 @@ export function CalculatorScreen({
           <NumericField label="預估時間" suffix="分鐘" value={minutes} onChange={setMinutes} />
           <NumericField label="額外等待" suffix="分鐘" value={extraWait} onChange={setExtraWait} />
         </View>
-        <View style={styles.switchRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.switchTitle}>偏遠回程風險</Text>
-            <Text style={commonStyles.subtitle}>開啟後，里程成本增加 30%</Text>
+        <View style={styles.returnSection}>
+          <Text style={styles.switchTitle}>送達後怎麼跑？</Text>
+          <Text style={commonStyles.subtitle}>回程的距離和時間都會計入。</Text>
+          <View style={styles.returnOptions}>
+            {(Object.keys(RETURN_MODES) as ReturnMode[]).map((mode) => {
+              const option = RETURN_MODES[mode];
+              const active = returnMode === mode;
+              return (
+                <Pressable
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  key={mode}
+                  onPress={() => setReturnMode(mode)}
+                  style={[styles.returnOption, active && styles.returnOptionActive]}
+                >
+                  <Text style={[styles.returnOptionTitle, active && styles.returnOptionTitleActive]}>{option.label}</Text>
+                  <Text style={styles.returnOptionDescription}>{option.description}</Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <Switch
-            onValueChange={setReturnRisk}
-            thumbColor={returnRisk ? COLORS.green : "#d6ded9"}
-            trackColor={{ false: "#27352d", true: COLORS.greenDark }}
-            value={returnRisk}
-          />
+          <Text style={styles.tripSummary}>
+            本次按 {formatNumber(result.effectiveDistance, 1)} km · {formatNumber(result.effectiveMinutes)} 分鐘評估
+          </Text>
         </View>
       </View>
 
@@ -138,8 +152,15 @@ const styles = StyleSheet.create({
   decisionMetrics: { flexDirection: "row", gap: 34, marginTop: "auto" },
   metricLabel: { color: COLORS.muted, fontSize: 10 },
   metricValue: { marginTop: 4, color: COLORS.ink, fontSize: 20, fontWeight: "900" },
-  switchRow: { flexDirection: "row", alignItems: "center", paddingTop: 4 },
+  returnSection: { paddingTop: 4 },
   switchTitle: { color: COLORS.ink, fontSize: 13, fontWeight: "800" },
+  returnOptions: { gap: 8, marginTop: 12 },
+  returnOption: { padding: 12, borderWidth: 1, borderColor: "#27352d", borderRadius: 14, backgroundColor: "#111a15" },
+  returnOptionActive: { borderColor: COLORS.green, backgroundColor: COLORS.greenDark },
+  returnOptionTitle: { color: COLORS.ink, fontSize: 13, fontWeight: "900" },
+  returnOptionTitleActive: { color: COLORS.green },
+  returnOptionDescription: { marginTop: 3, color: COLORS.muted, fontSize: 10 },
+  tripSummary: { marginTop: 11, color: COLORS.green, fontSize: 11, fontWeight: "800" },
   costGrid: { flexDirection: "row", flexWrap: "wrap", gap: 0 },
   costCell: { width: "50%", paddingVertical: 7 },
   costLabel: { color: COLORS.muted, fontSize: 10 },

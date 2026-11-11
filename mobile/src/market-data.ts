@@ -10,7 +10,7 @@ import {
 } from "./market-data-privacy";
 import type { HistoryItem } from "./types";
 
-const DEFAULT_API_URL = "https://order-radar-tw.baka0406.chatgpt.site";
+const DEFAULT_API_URL = "https://order-radar-tw.netlify.app";
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? DEFAULT_API_URL).replace(/\/$/, "");
 
 export type MarketContribution = {

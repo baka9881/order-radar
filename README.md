@@ -1,100 +1,118 @@
-# Order Radar
+# 接單雷達
 
-Order Radar is a cost calculator and road-safety companion for delivery couriers in Taiwan, including riders working with Uber Eats and foodpanda. It estimates the real value of an order, displays live speed, and warns about fixed speed cameras and automated traffic-enforcement locations published by government sources.
+> 2026-10-18：網站已準備遷移至 Netlify，最新操作以 [NETLIFY_MIGRATION.md](./NETLIFY_MIGRATION.md) 為準。下方 Sites／Workers／ChatGPT 登入段落僅為舊版架構紀錄，不適用新部署。
 
-## Core features
+臺灣外送員的接單成本試算、安全導航與政府公開固定執法設備提醒工具。
 
-1. **Order profitability and effective hourly rate** — Enter the delivery fee, distance, and estimated duration. The calculator subtracts fuel, oil, tires, maintenance, and vehicle depreciation, then returns a green, yellow, or red recommendation.
-2. **Fixed-camera and automated-enforcement alerts** — More than 1,800 government-published locations support live speed display and advance voice or vibration warnings.
-3. **Privacy-first location processing** — Radar matching runs locally on the device. Live GPS routes are neither stored nor uploaded. Optional market data is anonymized into approximately two-kilometre areas before leaving the phone.
-4. **Web and native mobile experiences** — The web application provides quick calculations and API services, while the Expo application adds offline enforcement data, Apple Maps, background location, and local notifications.
+專案包含兩個產品表面：
 
-## Architecture
+- 根目錄：以 Next.js／Netlify 執行的網站、API、雲端訂單及回饋。
+- `mobile/`：Expo SDK 57／React Native iOS App，使用 Apple Maps、裝置內資料及 EAS 雲端建置。
 
-| Platform | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Web application and API** | Next.js 16, React 19, vinext, Tailwind CSS 4, Cloudflare Workers, and D1 | Web order calculator, APIs, support pages, privacy policy, and terms |
-| **Mobile application** | Expo SDK 57, React Native 0.86, and Apple Maps | Native iOS experience with offline data, background location, and voice alerts |
+## Prerequisites
 
-## Requirements
+- Node.js `>=22.13.0`
 
-- Node.js `>= 22.13.0`
-- npm, included with Node.js
-
-## Quick start
-
-### Web application
+## Quick Start
 
 ```bash
 npm install
 npm run dev
+npm run build
 ```
 
-Open <http://localhost:3000/>. The development-only diagnostic page is available at <http://localhost:3000/__debug>.
-
-### Mobile web preview
+手機 App：
 
 ```bash
 cd mobile
 npm install
-npx expo start --web
+npm run validate
+npm start
 ```
 
-Open <http://localhost:8081>. To preview the mobile layout in a desktop browser, open the browser developer tools and switch device emulation to an iPhone 14 Pro or 15 Pro.
+背景定位必須使用 EAS development build 安裝到真實 iPhone，無法只靠 Expo Go 驗證。完整步驟見 `mobile/README.md` 與 `mobile/APP_STORE_CHECKLIST.md`。
 
-Native maps, background location, and some device services require an Expo development build on a physical device; they are not fully available in the browser preview.
+This starter does not use `wrangler.jsonc`.
 
-## Common commands
+## Website Architecture
 
-### Project root
+- edit site code under `app/`
+- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
+- `vite.config.ts` simulates declared bindings for local development
+- `db/schema.ts` defines profiles, orders, and feedback storage
+- `app/api/enforcement` aggregates official fixed-enforcement datasets
+- `app/privacy`, `app/terms`, and `app/support` contain App Store policy surfaces
+- `drizzle.config.ts` supports local migration generation when needed
 
-- `npm run dev` — Start the local web development server
-- `npm run build` — Build and validate the vinext web output
-- `npm test` — Run the web build and server-rendered page tests
-- `npm run db:generate` — Generate Drizzle ORM database migrations
-- `npm run data:mobile` — Refresh the mobile enforcement-location snapshot from the local API
+## Workspace Auth Headers
 
-### Mobile application
+Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
 
-- `npx expo start --web` — Start the React Native Web preview
-- `npm start` — Start Expo Metro for Expo Go or an EAS development build
-- `npm test` — Run the Vitest unit tests
-- `npm run validate` — Run TypeScript checks, unit tests, and an iOS JavaScript bundle export
-- `npm run build:ios:dev` — Create a cloud-hosted development build through EAS
+The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
 
-## Project structure
+SIWC-authenticated workspace sites may also receive
+`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
+`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
+`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
 
-```text
-order-radar/
-├── app/                        # Next.js pages and API routes
-│   ├── OrderCalculator.tsx     # Delivery cost and net-income calculator
-│   ├── NavigationPanel.tsx     # Web enforcement map and location list
-│   ├── api/                    # Orders, enforcement data, feedback, and optional data program
-│   ├── privacy/ and terms/     # App Store-compatible policy pages
-│   └── chatgpt-auth.ts         # Sign in with ChatGPT authentication helper
-├── mobile/                     # Expo and React Native iOS application
-│   ├── App.tsx                 # Application entry point and tab navigation
-│   ├── src/
-│   │   ├── components/         # Cross-platform map and input components
-│   │   ├── screens/            # Calculator, radar, history, settings, and onboarding
-│   │   ├── order-engine.ts     # Cost and hourly-rate calculation engine
-│   │   ├── enforcement.ts      # Offline enforcement-distance matching and cache
-│   │   └── background-location.ts
-│   └── store/                  # App Store review metadata and privacy labels
-├── db/                         # Cloudflare D1 schema and migrations
-├── worker/                     # Cloudflare Workers entry point
-├── scripts/                    # Government-data synchronization tools
-└── tests/                      # Web rendering tests
+Treat the full name as optional and fall back to email when it is absent:
+
+```tsx
+import { headers } from "next/headers";
+
+export default async function Home() {
+  const requestHeaders = await headers();
+  const userId = requestHeaders.get("oai-authenticated-user-id");
+  const email = requestHeaders.get("oai-authenticated-user-email");
+  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
+  const fullName =
+    encodedFullName &&
+    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
+      "percent-encoded-utf-8"
+      ? decodeURIComponent(encodedFullName)
+      : null;
+
+  const displayName = fullName ?? email;
+  // ...
+}
 ```
 
-## Privacy and safety
+## Optional Dispatch-Owned ChatGPT Sign-In
 
-- Live location matching happens on the user's device.
-- Raw location history and complete routes are not uploaded.
-- Optional market-data contributions are anonymized on the phone and can be withdrawn.
-- Enforcement locations come from Taiwan government open-data sources and are provided only as a road-safety aid.
-- Drivers remain responsible for observing road conditions, traffic laws, and posted speed limits.
+Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
+optional or required ChatGPT sign-in:
 
-## License
+- Use `getChatGPTUser()` for optional signed-in UI.
+- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
+  anonymous visitors through Sign in with ChatGPT.
+- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
+  browser links or actions.
+- Pass a same-origin relative `returnTo` path for the destination after sign-in
+  or sign-out. The helper validates and safely encodes it.
+- Mark protected pages with `export const dynamic = "force-dynamic"` because
+  they depend on per-request identity headers.
 
-No open-source license is currently granted for the project as a whole. The source code is publicly viewable for portfolio and evaluation purposes; all rights are reserved unless stated otherwise. Third-party components remain subject to their respective licenses.
+Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
+OAuth cookies, and identity header injection. Do not implement app routes for
+those reserved paths. Routes that do not import and call the helper remain
+anonymous-compatible.
+
+SIWC establishes identity only; it does not prove workspace membership. Use the
+Sites hosting platform's access policy controls for workspace-wide restrictions,
+or enforce explicit server-side membership or allowlist checks.
+
+Use SIWC for account pages, user-specific dashboards, saved records, and write
+actions tied to the current ChatGPT user. Leave public content anonymous.
+
+## Useful Commands
+
+- `npm run dev`: start local development
+- `npm run build`: verify the Next.js build output
+- `npm test`: build the website and verify rendered product routes
+- `npm run db:generate`: generate Drizzle migrations after schema changes
+- `npm run data:mobile`: refresh the mobile offline enforcement snapshot while the local website API is running
+
+## Learn More
+
+- [vinext Documentation](https://github.com/cloudflare/vinext)
+- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)

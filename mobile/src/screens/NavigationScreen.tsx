@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AppState,
   Alert,
   Linking,
   Modal,
@@ -16,7 +17,7 @@ import * as KeepAwake from "expo-keep-awake";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import * as Speech from "expo-speech";
-import { RadarMap } from "../components/RadarMap";
+import MapView, { Marker, type LongPressEvent, type Region } from "react-native-maps";
 import { BACKGROUND_LOCATION_TASK } from "../background-location";
 import {
   distanceKm,
@@ -27,18 +28,32 @@ import {
   TYPE_LABEL,
 } from "../enforcement";
 import { IS_EXPO_GO } from "../runtime";
+import {
+  addCaptureStatusListener,
+  addOrderDetectedListener,
+  DEFAULT_CAPTURE_STATUS,
+  getCaptureStatus,
+  getLastDetection,
+  openNotificationAccessSettings,
+  openOverlayPermissionSettings,
+  ORDER_CAPTURE_AVAILABLE,
+  startOrderCapture,
+  stopOrderCapture,
+  type CaptureStatus,
+  type DetectedOrder,
+} from "../order-capture";
 import { saveAlertPoints } from "../storage";
 import { COLORS } from "../theme";
-import type { Coordinates, EnforcementPoint, HistoryItem } from "../types";
+import type { CalculatorSettings, Coordinates, EnforcementPoint, HistoryItem } from "../types";
 
 const DEFAULT_CENTER: Coordinates = { latitude: 25.036, longitude: 121.432 };
-const INITIAL_REGION = {
+const INITIAL_REGION: Region = {
   ...DEFAULT_CENTER,
   latitudeDelta: 0.12,
   longitudeDelta: 0.08,
 };
 
-type SheetName = "menu" | "layers" | "destination" | null;
+type SheetName = "menu" | "layers" | "destination" | "orderRadar" | null;
 type LayerVisibility = Record<EnforcementPoint["type"], boolean>;
 
 type Props = {
@@ -46,6 +61,7 @@ type Props = {
   onOpenCalculator: () => void;
   onOpenHistory: () => void;
   onOpenSettings: () => void;
+  settings: CalculatorSettings;
 };
 
 type BottomSheetProps = {
@@ -76,8 +92,27 @@ function formatElapsed(seconds: number) {
     : `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
-export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onOpenSettings }: Props) {
-  const mapRef = useRef<any>(null);
+function captureStateLabel(status: CaptureStatus) {
+  if (status.state === "running") return "監看中";
+  if (status.state === "requesting") return "等待授權";
+  if (status.state === "error") return "需要處理";
+  return "尚未啟動";
+}
+
+function detectionColor(signal: DetectedOrder["signal"]) {
+  if (signal === "green") return COLORS.green;
+  if (signal === "yellow") return COLORS.yellow;
+  return COLORS.red;
+}
+
+function detectionLabel(signal: DetectedOrder["signal"]) {
+  if (signal === "green") return "接 · 值得接";
+  if (signal === "yellow") return "看 · 看情況";
+  return "拒 · 先不要";
+}
+
+export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onOpenSettings, settings }: Props) {
+  const mapRef = useRef<MapView | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastAlertIdRef = useRef<string | null>(null);
   const lastPointRefreshRef = useRef<Coordinates | null>(null);
@@ -98,30 +133,31 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     technology: true,
     interval: true,
   });
+  const [captureStatus, setCaptureStatus] = useState<CaptureStatus>(DEFAULT_CAPTURE_STATUS);
+  const [lastDetection, setLastDetection] = useState<DetectedOrder | null>(null);
+
+  const captureRunning = captureStatus.state === "running" || captureStatus.state === "requesting";
 
   const todaySummary = useMemo(() => {
     const today = new Date().toDateString();
-    const todayOrders = history.filter((item) => new Date(item.createdAt).toDateString() === today);
-    const greenCount = todayOrders.filter((item) => item.signal === "green").length;
-    const revenue = todayOrders.reduce((sum, item) => sum + item.amount, 0);
-    const greenRate = todayOrders.length > 0 ? Math.round((greenCount / todayOrders.length) * 100) : 0;
+    const todayItems = history.filter((item) => new Date(item.createdAt).toDateString() === today);
+    const greenCount = todayItems.filter((item) => item.signal === "green").length;
     return {
-      orders: todayOrders.length,
-      revenue,
-      greenRate,
+      orders: todayItems.length,
+      greenRate: todayItems.length ? Math.round((greenCount / todayItems.length) * 100) : 0,
+      revenue: Math.round(todayItems.reduce((sum, item) => sum + item.amount, 0)),
     };
   }, [history]);
 
-  useEffect(() => {
-    if (!startedAt) {
-      setElapsedSeconds(0);
-      return;
-    }
-    const timer = setInterval(() => {
-      setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [startedAt]);
+  const visiblePoints = useMemo(
+    () => points.filter((point) => visibleLayers[point.type]).slice(0, 140),
+    [points, visibleLayers],
+  );
+
+  const nearest = useMemo(() => points[0] ?? null, [points]);
+  const navigationDestination = destination
+    ? `${destination.latitude},${destination.longitude}`
+    : destinationText.trim();
 
   const alertIfNeeded = useCallback((origin: Coordinates, currentPoints: EnforcementPoint[]) => {
     if (!voiceEnabled) return;
@@ -153,9 +189,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
   }, [alertIfNeeded]);
 
   useEffect(() => {
-    if (IS_EXPO_GO) {
-      setBackgroundEnabled(false);
-    } else {
+    if (!IS_EXPO_GO) {
       void Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)
         .then(setBackgroundEnabled)
         .catch(() => setBackgroundEnabled(false));
@@ -170,70 +204,108 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     };
   }, [handleLocation]);
 
+  useEffect(() => {
+    void Promise.all([getCaptureStatus(), getLastDetection()]).then(([nextStatus, detection]) => {
+      setCaptureStatus(nextStatus);
+      setLastDetection(detection);
+    });
+    const statusSubscription = addCaptureStatusListener(setCaptureStatus);
+    const detectionSubscription = addOrderDetectedListener((detection) => {
+      setLastDetection(detection);
+      const feedback = detection.signal === "green"
+        ? Haptics.NotificationFeedbackType.Success
+        : detection.signal === "yellow"
+          ? Haptics.NotificationFeedbackType.Warning
+          : Haptics.NotificationFeedbackType.Error;
+      void Haptics.notificationAsync(feedback);
+    });
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void getCaptureStatus().then(setCaptureStatus);
+    });
+    return () => {
+      statusSubscription?.remove();
+      detectionSubscription?.remove();
+      appStateSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (startedAt === null) return undefined;
+    const timer = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [startedAt]);
+
   const startForegroundTracking = async () => {
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== "granted") {
-      setStatus("定位未開啟；仍可查看地圖並手動設定目的地。");
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        setStatus("定位未開啟；仍可查看地圖並設定目的地");
+        return false;
+      }
+      locationSubscriptionRef.current?.remove();
+      locationSubscriptionRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.BestForNavigation,
+          distanceInterval: 15,
+          timeInterval: 3000,
+        },
+        (location) => void handleLocation(location),
+      );
+      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      await handleLocation(current);
+      setTracking(true);
+      setElapsedSeconds(0);
+      setStartedAt(Date.now());
+      setStatus("前景安全提醒已啟用");
+      await KeepAwake.activateKeepAwakeAsync("order-radar-navigation");
+      mapRef.current?.animateToRegion(
+        {
+          latitude: current.coords.latitude,
+          longitude: current.coords.longitude,
+          latitudeDelta: 0.04,
+          longitudeDelta: 0.03,
+        },
+        600,
+      );
+      return true;
+    } catch {
+      setStatus("目前無法取得定位，請確認系統定位與網路設定");
       return false;
     }
-    try {
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      await handleLocation(position);
-      mapRef.current?.animateToRegion?.({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        latitudeDelta: 0.03,
-        longitudeDelta: 0.02,
-      }, 600);
-    } catch {
-      setStatus("無法取得目前位置，請確認 GPS 已開啟。");
-    }
-    locationSubscriptionRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 3000,
-        distanceInterval: 10,
-      },
-      (loc) => void handleLocation(loc),
-    );
-    await KeepAwake.activateKeepAwakeAsync("order-radar-navigation");
-    setTracking(true);
-    setStartedAt(Date.now());
-    setStatus("前景安全提醒進行中；接近測速點時會發出語音與震動。");
-    return true;
   };
 
   const requestBackgroundTracking = () => {
+    setSheet(null);
     if (IS_EXPO_GO) {
       Alert.alert(
-        "Expo Go 限制",
-        "Expo Go 不支援自訂原生背景定位；若要在鎖定畫面或換到外送 App 時持續提醒，需安裝 EAS 開發版（Dev Build）。",
-        [{ text: "了解" }],
+        "Expo Go 測試限制",
+        "Expo Go 無法完整測試 Android／iPhone 背景定位；目前可以測試前景定位、地圖、語音與科技執法提醒。安裝獨立測試版後即可測試背景安全提醒。",
       );
       return;
     }
-    if (backgroundEnabled) {
-      Alert.alert("背景提醒已啟用", "若要停用，可直接點「停止所有提醒」或到系統設定關閉永遠定位。");
-      return;
-    }
     Alert.alert(
-      "啟用背景安全提醒？",
-      "接單雷達只會在行車提醒期間於背景比對附近公開設備，位置不會儲存行程或上傳伺服器。iOS 請選擇「永遠允許」。",
+      "背景安全提醒",
+      "只有你主動開啟時才使用背景定位。位置只在手機上比對，不會儲存完整行程；持續 GPS 會增加耗電。",
       [
-        { text: "取消", style: "cancel" },
+        { text: "先不要", style: "cancel" },
         {
-          text: "前往授權",
+          text: "繼續設定",
           onPress: () => void (async () => {
+            const foregroundReady = tracking || await startForegroundTracking();
+            if (!foregroundReady) return;
+            await Notifications.requestPermissionsAsync();
+            const permission = await Location.requestBackgroundPermissionsAsync();
+            if (permission.status !== "granted") {
+              setStatus("未取得背景定位；前景提醒仍可使用");
+              return;
+            }
             try {
-              const bgPermission = await Location.requestBackgroundPermissionsAsync();
-              if (bgPermission.status !== "granted") {
-                setStatus("未取得背景定位權限；切換到其他 App 時將暫停提醒。");
-                return;
-              }
-              const isRegistered = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-              if (!isRegistered) {
+              if (!await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK)) {
                 await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-                  accuracy: Location.Accuracy.High,
+                  accuracy: Location.Accuracy.BestForNavigation,
+                  activityType: Location.ActivityType.AutomotiveNavigation,
                   distanceInterval: 35,
                   deferredUpdatesDistance: 80,
                   deferredUpdatesInterval: 15000,
@@ -246,9 +318,9 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
                 });
               }
               setBackgroundEnabled(true);
-              setStatus("背景安全提醒已啟用；完全關閉 App 後系統可能停止更新。");
+              setStatus("背景安全提醒已啟用");
             } catch {
-              setStatus("背景定位需要安裝 EAS 開發版，Expo Go 不支援這項功能。");
+              setStatus("背景定位需要安裝 EAS 開發版");
             }
           })(),
         },
@@ -266,69 +338,31 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     setBackgroundEnabled(false);
     setStartedAt(null);
     setSpeedKmh(0);
-    setStatus("已停止定位與提醒；點擊綠色按鈕即可重新開始。");
+    setStatus("安全提醒已停止");
     Speech.stop();
     await KeepAwake.deactivateKeepAwake("order-radar-navigation").catch(() => {});
   };
 
-  const toggleTracking = async () => {
-    if (tracking) {
-      await stopTracking();
-      return;
-    }
-    await startForegroundTracking();
-  };
-
-  const toggleVoice = () => {
-    setVoiceEnabled((prev) => {
-      const next = !prev;
-      setStatus(next ? "已開啟語音與震動提醒" : "已關閉語音提醒（靜音模式）");
-      return next;
-    });
-  };
-
-  const recenter = async () => {
-    try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      mapRef.current?.animateToRegion?.({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-        latitudeDelta: 0.03,
-        longitudeDelta: 0.02,
-      }, 500);
-      void handleLocation(loc);
-    } catch {
-      Alert.alert("定位失敗", "請確認手機 GPS 與定位權限已開啟。");
-    }
-  };
-
-  const visiblePoints = useMemo(() => {
-    return points.filter((p) => visibleLayers[p.type]).slice(0, 180);
-  }, [points, visibleLayers]);
-
-  const nearest = useMemo(() => visiblePoints[0] ?? null, [visiblePoints]);
-
-  const navigationDestination = destination
-    ? `${destination.latitude},${destination.longitude}`
-    : destinationText.trim();
+  const toggleTracking = () => void (tracking ? stopTracking() : startForegroundTracking());
 
   const openMap = async (provider: "apple" | "google") => {
     if (!navigationDestination) {
-      Alert.alert("請先設定目的地", "可以輸入地址，或直接在長按地圖設定點位。");
+      Alert.alert("請先設定目的地", "可以輸入地址，或長按地圖上的位置。");
       return;
     }
     const encoded = encodeURIComponent(navigationDestination);
     const url = provider === "apple"
       ? `https://maps.apple.com/?daddr=${encoded}&dirflg=d`
       : `https://www.google.com/maps/dir/?api=1&destination=${encoded}&travelmode=driving`;
+    setSheet(null);
     await Linking.openURL(url);
   };
 
-  const setMapDestination = (event: any) => {
+  const setMapDestination = (event: LongPressEvent) => {
     const next = event.nativeEvent.coordinate;
     setDestination(next);
     setDestinationText(`${next.latitude.toFixed(6)}, ${next.longitude.toFixed(6)}`);
-    setStatus("已在地圖設定目的地；點右側導航鍵可開啟外部地圖。");
+    setStatus("目的地已設定；點右側箭頭開始導航");
   };
 
   const locateAddress = async () => {
@@ -339,17 +373,87 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
       if (!match) throw new Error("not-found");
       const next = { latitude: match.latitude, longitude: match.longitude };
       setDestination(next);
-      mapRef.current?.animateToRegion?.({ ...next, latitudeDelta: 0.03, longitudeDelta: 0.02 }, 600);
+      mapRef.current?.animateToRegion({ ...next, latitudeDelta: 0.03, longitudeDelta: 0.02 }, 600);
       setSheet(null);
-      setStatus(`已定位到：${destinationText.trim()}`);
+      setStatus("目的地已定位；點右側箭頭開始導航");
     } catch {
-      Alert.alert("找不到這個地址", "可以換一個較完整的地址，或直接長按地圖設定。");
+      Alert.alert("找不到這個地址", "可以換一個較完整的地址，或長按地圖設定。");
     }
   };
 
-  const showInfo = () => {
+  const beginOrderCapture = () => {
+    if (Platform.OS !== "android") {
+      Alert.alert(
+        "iPhone 系統限制",
+        "iOS 不能持續讀取 Uber Eats 畫面；iPhone 版本會改用截圖後分享到接單雷達辨識。",
+      );
+      return;
+    }
+    if (!ORDER_CAPTURE_AVAILABLE) {
+      Alert.alert(
+        "需要新版 Android 測試 APK",
+        IS_EXPO_GO
+          ? "Expo Go 沒有螢幕辨識原生模組，請安裝下一版接單雷達測試 APK。"
+          : "目前安裝的版本沒有螢幕辨識模組，請更新到下一版測試 APK。",
+      );
+      return;
+    }
+
     Alert.alert(
-      "政府公開執法設備說明",
+      "開始自動判單",
+      "接下來 Android 會要求螢幕分享。請只選擇 Uber Eats；畫面只在手機內做文字辨識，不會保存或上傳截圖。鎖定螢幕或停止分享後，需要重新啟動。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "了解，繼續",
+          onPress: () => void (async () => {
+            try {
+              await Notifications.requestPermissionsAsync();
+              const next = await startOrderCapture(settings);
+              setCaptureStatus(next);
+            } catch (error) {
+              setCaptureStatus({
+                state: "error",
+                message: error instanceof Error ? error.message : "自動判單無法啟動",
+                canDrawOverlays: captureStatus.canDrawOverlays,
+                hasNotificationAccess: captureStatus.hasNotificationAccess,
+                lastError: "start-failed",
+              });
+            }
+          })(),
+        },
+      ],
+    );
+  };
+
+  const endOrderCapture = async () => {
+    const next = await stopOrderCapture();
+    setCaptureStatus(next);
+  };
+
+  const requestOverlayPermission = async () => {
+    await openOverlayPermissionSettings();
+    setStatus("請允許接單雷達顯示在其他 App 上層，再返回本頁");
+  };
+
+  const requestNotificationAccess = () => {
+    Alert.alert(
+      "Uber 通知偵測用途",
+      "Android 的通知存取權技術上可以接收所有 App 的通知事件。接單雷達會先檢查來源，只讀取 Uber Driver 的通知文字，用來加速訂單辨識；其他 App 通知不會讀取、保存或上傳。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "前往設定",
+          onPress: () => void openNotificationAccessSettings(),
+        },
+      ],
+    );
+  };
+
+  const showInfo = () => {
+    setSheet(null);
+    Alert.alert(
+      "公開設備提醒",
       `目前離線收錄 ${enforcementDataset.points.length} 筆有座標的政府公開資料。資料可能延遲或缺漏，不包含流動執法；請以現場標誌、號誌與速限為準。`,
     );
   };
@@ -361,15 +465,32 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
 
   return (
     <View style={styles.screen}>
-      <RadarMap
-        darkMap={darkMap}
-        destination={destination}
+      <MapView
         initialRegion={INITIAL_REGION}
+        mapType="standard"
         onLongPress={setMapDestination}
         ref={mapRef}
-        style={StyleSheet.absoluteFill}
-        visiblePoints={visiblePoints}
-      />
+        showsCompass={false}
+        showsMyLocationButton={false}
+        showsUserLocation
+        style={StyleSheet.absoluteFillObject}
+        userInterfaceStyle={darkMap ? "dark" : "light"}
+      >
+        {visiblePoints.map((point) => (
+          <Marker
+            coordinate={point}
+            description={[point.direction, point.speedLimit ? `速限 ${point.speedLimit}` : "", point.source].filter(Boolean).join(" · ")}
+            key={point.id}
+            title={`${TYPE_LABEL[point.type]} · ${point.title}`}
+            tracksViewChanges={false}
+          >
+            <View style={[styles.mapMarker, { borderColor: TYPE_COLOR[point.type] }]}>
+              <View style={[styles.mapMarkerCore, { backgroundColor: TYPE_COLOR[point.type] }]} />
+            </View>
+          </Marker>
+        ))}
+        {destination ? <Marker coordinate={destination} pinColor={COLORS.blue} title="目的地" /> : null}
+      </MapView>
 
       <View pointerEvents="box-none" style={styles.topArea}>
         <View style={styles.summaryCard}>
@@ -388,8 +509,10 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
               <Text style={styles.summaryValue}>${todaySummary.revenue}</Text>
             </View>
           </View>
-          <View style={[styles.summaryStrip, tracking && styles.summaryStripActive]}>
-            <Text style={styles.summaryStripText}>{tracking ? "安全提醒運作中" : "停妥後再操作手機"}</Text>
+          <View style={[styles.summaryStrip, (tracking || captureRunning) && styles.summaryStripActive]}>
+            <Text style={styles.summaryStripText}>
+              {captureRunning ? "自動判單監看中" : tracking ? "安全提醒運作中" : "停妥後再操作手機"}
+            </Text>
           </View>
         </View>
 
@@ -398,155 +521,230 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
         </Pressable>
 
         <View style={styles.statusPill}>
-          <View style={[styles.statusDot, tracking && styles.statusDotActive]} />
-          <Text numberOfLines={2} style={styles.statusText}>{status}</Text>
+          <View style={[styles.statusDot, (tracking || captureRunning) && styles.statusDotActive]} />
+          <Text numberOfLines={2} style={styles.statusText}>{captureRunning ? captureStatus.message : status}</Text>
         </View>
       </View>
 
       <View pointerEvents="box-none" style={styles.rightControls}>
         <Pressable
-          accessibilityLabel="重新定位"
-          onPress={() => void recenter()}
-          style={styles.roundButton}
+          accessibilityLabel="自動判單"
+          onPress={() => setSheet("orderRadar")}
+          style={[styles.roundButton, captureRunning && styles.roundButtonActive]}
         >
-          <Text style={styles.roundButtonIcon}>◎</Text>
+          <Text style={[styles.radarButtonText, captureRunning && styles.roundButtonIconActive]}>判</Text>
         </Pressable>
-
         <Pressable
-          accessibilityLabel="圖層開關"
-          onPress={() => setSheet("layers")}
-          style={styles.roundButton}
-        >
-          <Text style={styles.roundButtonIcon}>☷</Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityLabel="設定目的地"
-          onPress={() => setSheet("destination")}
-          style={styles.roundButton}
-        >
-          <Text style={styles.roundButtonIcon}>⚑</Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityLabel="語音提示切換"
-          onPress={toggleVoice}
+          accessibilityLabel="切換語音提醒"
+          onPress={() => setVoiceEnabled((value) => !value)}
           style={[styles.roundButton, voiceEnabled && styles.roundButtonActive]}
         >
-          <Text style={[styles.roundButtonIcon, voiceEnabled && styles.roundButtonIconActive]}>
-            {voiceEnabled ? "🔊" : "🔇"}
-          </Text>
+          <Text style={[styles.roundButtonIcon, voiceEnabled && styles.roundButtonIconActive]}>{voiceEnabled ? "◖" : "×"}</Text>
+        </Pressable>
+        <Pressable accessibilityLabel="地圖圖層" onPress={() => setSheet("layers")} style={styles.roundButton}>
+          <Text style={styles.roundButtonIcon}>◇</Text>
+        </Pressable>
+        <Pressable accessibilityLabel="設定目的地" onPress={() => setSheet("destination")} style={styles.roundButton}>
+          <Text style={styles.roundButtonIcon}>↗</Text>
+        </Pressable>
+      </View>
+
+      <View pointerEvents="box-none" style={styles.bottomControls}>
+        <View style={styles.timerCard}>
+          <Text style={styles.timerValue}>{tracking ? formatElapsed(elapsedSeconds) : `${Math.round(speedKmh)}`}</Text>
+          <Text style={styles.timerLabel}>{tracking ? "行車時間" : "km/h"}</Text>
+        </View>
+
+        <Pressable
+          accessibilityLabel={tracking ? "停止安全提醒" : "開始安全提醒"}
+          onPress={toggleTracking}
+          style={[styles.startButton, tracking && styles.startButtonTracking]}
+        >
+          <Text style={styles.startButtonIcon}>{tracking ? "■" : "➤"}</Text>
+        </Pressable>
+
+        <Pressable accessibilityLabel="開啟功能選單" onPress={() => setSheet("menu")} style={styles.menuButton}>
+          <Text style={styles.menuButtonIcon}>•••</Text>
         </Pressable>
       </View>
 
       {nearest ? (
-        <View pointerEvents="box-none" style={styles.nearestCard}>
+        <View pointerEvents="none" style={styles.nearestCard}>
           <View style={[styles.nearestDot, { backgroundColor: TYPE_COLOR[nearest.type] }]} />
           <View style={styles.nearestCopy}>
             <Text style={styles.nearestLabel}>最近設備 · {TYPE_LABEL[nearest.type]}</Text>
             <Text numberOfLines={1} style={styles.nearestValue}>
               {formatDistance(nearest.distanceKm ?? 0)} · {nearest.title}
-              {nearest.speedLimit ? ` · 速限 ${nearest.speedLimit}` : ""}
             </Text>
           </View>
         </View>
       ) : null}
 
-      <View pointerEvents="box-none" style={styles.bottomControls}>
-        <View style={styles.timerCard}>
-          <Text style={styles.timerValue}>{tracking ? formatElapsed(elapsedSeconds) : Math.round(speedKmh)}</Text>
-          <Text style={styles.timerLabel}>{tracking ? "提醒時間" : "GPS km/h"}</Text>
-        </View>
-
-        <Pressable
-          accessibilityLabel={tracking ? "停止提醒" : "開始提醒"}
-          onPress={() => void toggleTracking()}
-          style={[styles.startButton, tracking && styles.startButtonTracking]}
-        >
-          <Text style={styles.startButtonIcon}>{tracking ? "■" : "▶"}</Text>
-        </Pressable>
-
-        <Pressable
-          accessibilityLabel="功能選單"
-          onPress={() => setSheet("menu")}
-          style={styles.menuButton}
-        >
-          <Text style={styles.menuButtonIcon}>≡</Text>
-        </Pressable>
-      </View>
-
       <BottomSheet onClose={() => setSheet(null)} visible={sheet === "menu"}>
-        <Text style={styles.sheetTitle}>功能選單</Text>
-        <Text style={styles.sheetSubtitle}>快速切換試算、紀錄與自訂設定</Text>
+        <Text style={styles.sheetTitle}>快捷工具</Text>
+        <Text style={styles.sheetSubtitle}>常用功能集中在這裡，地圖保持乾淨。</Text>
         <View style={styles.menuGrid}>
+          <Pressable onPress={() => setSheet("orderRadar")} style={styles.menuItem}>
+            <Text style={[styles.menuItemIcon, captureRunning && { color: COLORS.green }]}>判</Text>
+            <Text style={styles.menuItemLabel}>{captureRunning ? "判單監看中" : "自動判單"}</Text>
+          </Pressable>
           <Pressable onPress={() => navigateFromMenu(onOpenCalculator)} style={styles.menuItem}>
-            <Text style={styles.menuItemIcon}>$</Text>
-            <Text style={styles.menuItemLabel}>接單試算</Text>
+            <Text style={styles.menuItemIcon}>$</Text><Text style={styles.menuItemLabel}>成本試算</Text>
           </Pressable>
           <Pressable onPress={() => navigateFromMenu(onOpenHistory)} style={styles.menuItem}>
-            <Text style={styles.menuItemIcon}>≡</Text>
-            <Text style={styles.menuItemLabel}>跑單紀錄</Text>
+            <Text style={styles.menuItemIcon}>≡</Text><Text style={styles.menuItemLabel}>訂單紀錄</Text>
           </Pressable>
           <Pressable onPress={() => navigateFromMenu(onOpenSettings)} style={styles.menuItem}>
-            <Text style={styles.menuItemIcon}>⚙</Text>
-            <Text style={styles.menuItemLabel}>車輛與設定</Text>
+            <Text style={styles.menuItemIcon}>⚙</Text><Text style={styles.menuItemLabel}>偏好設定</Text>
           </Pressable>
-          <Pressable onPress={() => { setSheet(null); requestBackgroundTracking(); }} style={styles.menuItem}>
-            <Text style={styles.menuItemIcon}>⌁</Text>
-            <Text style={styles.menuItemLabel}>背景提醒</Text>
+          <Pressable onPress={requestBackgroundTracking} style={styles.menuItem}>
+            <Text style={styles.menuItemIcon}>◎</Text><Text style={styles.menuItemLabel}>{backgroundEnabled ? "背景已開" : "背景提醒"}</Text>
           </Pressable>
-          <Pressable onPress={() => { setSheet(null); void openMap(Platform.OS === "ios" ? "apple" : "google"); }} style={styles.menuItem}>
-            <Text style={styles.menuItemIcon}>↗</Text>
-            <Text style={styles.menuItemLabel}>外部導航</Text>
+          <Pressable onPress={() => { setVoiceEnabled((value) => !value); setSheet(null); }} style={styles.menuItem}>
+            <Text style={styles.menuItemIcon}>◖</Text><Text style={styles.menuItemLabel}>{voiceEnabled ? "關閉語音" : "開啟語音"}</Text>
           </Pressable>
-          <Pressable onPress={() => { setSheet(null); showInfo(); }} style={styles.menuItem}>
-            <Text style={styles.menuItemIcon}>ⓘ</Text>
-            <Text style={styles.menuItemLabel}>資料說明</Text>
+          <Pressable onPress={showInfo} style={styles.menuItem}>
+            <Text style={styles.menuItemIcon}>i</Text><Text style={styles.menuItemLabel}>資料說明</Text>
           </Pressable>
         </View>
       </BottomSheet>
 
+      <BottomSheet onClose={() => setSheet(null)} visible={sheet === "orderRadar"}>
+        <Text style={styles.sheetTitle}>即時自動判單</Text>
+        <Text style={styles.sheetSubtitle}>
+          Android 會在本機辨識 Uber Eats 的金額、公里與時間；不保存、不上傳畫面，也不會替你點擊接單。
+        </Text>
+
+        <View style={styles.captureStatusCard}>
+          <View style={[
+            styles.captureStatusDot,
+            captureRunning && styles.captureStatusDotRunning,
+            captureStatus.state === "error" && styles.captureStatusDotError,
+          ]} />
+          <View style={styles.captureStatusCopy}>
+            <Text style={styles.captureStatusTitle}>{captureStateLabel(captureStatus)}</Text>
+            <Text style={styles.captureStatusMessage}>{captureStatus.message}</Text>
+          </View>
+        </View>
+
+        {Platform.OS === "android" && ORDER_CAPTURE_AVAILABLE && !captureStatus.canDrawOverlays ? (
+          <Pressable onPress={() => void requestOverlayPermission()} style={styles.overlayPermissionButton}>
+            <Text style={styles.overlayPermissionTitle}>允許浮動判斷卡</Text>
+            <Text style={styles.overlayPermissionDescription}>未開啟時仍會用通知顯示，但可能比較不醒目。</Text>
+          </Pressable>
+        ) : null}
+
+        {Platform.OS === "android" && ORDER_CAPTURE_AVAILABLE ? (
+          <Pressable
+            disabled={captureStatus.hasNotificationAccess}
+            onPress={requestNotificationAccess}
+            style={[
+              styles.notificationAccessButton,
+              captureStatus.hasNotificationAccess && styles.notificationAccessEnabled,
+            ]}
+          >
+            <Text style={[
+              styles.notificationAccessTitle,
+              captureStatus.hasNotificationAccess && styles.notificationAccessTitleEnabled,
+            ]}>
+              {captureStatus.hasNotificationAccess ? "Uber 通知加速已開啟" : "允許 Uber 訂單通知偵測"}
+            </Text>
+            <Text style={styles.notificationAccessDescription}>
+              {captureStatus.hasNotificationAccess
+                ? "收到 Uber Driver 通知時會立刻嘗試解析，資料不足則接續畫面 OCR。"
+                : "選用權限；可讓新訂單更快觸發辨識，只處理 Uber Driver。"}
+            </Text>
+          </Pressable>
+        ) : null}
+
+        {!ORDER_CAPTURE_AVAILABLE ? (
+          <View style={styles.captureUnavailableCard}>
+            <Text style={styles.captureUnavailableTitle}>
+              {Platform.OS === "android" ? "需要安裝新版 Android 測試 APK" : "iPhone 目前使用截圖分享方式"}
+            </Text>
+            <Text style={styles.captureUnavailableText}>
+              {Platform.OS === "android"
+                ? "Expo Go 與舊版 APK 不包含螢幕監看原生模組。"
+                : "iOS 不允許 App 持續讀取另一個 App 的畫面。"}
+            </Text>
+          </View>
+        ) : null}
+
+        {lastDetection ? (
+          <View style={[styles.lastDetectionCard, { borderColor: `${detectionColor(lastDetection.signal)}66` }]}>
+            <Text style={[styles.lastDetectionDecision, { color: detectionColor(lastDetection.signal) }]}>
+              {detectionLabel(lastDetection.signal)}
+            </Text>
+            <Text style={styles.lastDetectionOffer}>
+              ${Math.round(lastDetection.amount)} · {lastDetection.distance} km · {Math.round(lastDetection.minutes)} 分鐘
+            </Text>
+            <Text style={styles.lastDetectionMetrics}>
+              {lastDetection.returnMode === "full" ? "原路空返" : lastDetection.returnMode === "hotspot" ? "回附近熱區" : "當地續跑"}
+              {" · 計入 "}{(lastDetection.effectiveDistance ?? lastDetection.distance).toFixed(1)} km / {Math.round(lastDetection.effectiveMinutes ?? lastDetection.minutes)} 分
+            </Text>
+            <Text style={styles.lastDetectionMetrics}>
+              淨利 ${Math.round(lastDetection.fullNet)}　淨時薪 ${Math.round(lastDetection.fullHourly)}　每公里 ${lastDetection.perKm.toFixed(1)}
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.captureActions}>
+          <Pressable
+            disabled={!captureRunning && Platform.OS === "android" && !ORDER_CAPTURE_AVAILABLE}
+            onPress={captureRunning ? () => void endOrderCapture() : beginOrderCapture}
+            style={[
+              styles.capturePrimaryAction,
+              captureRunning && styles.captureStopAction,
+              !captureRunning && Platform.OS === "android" && !ORDER_CAPTURE_AVAILABLE && styles.captureActionDisabled,
+            ]}
+          >
+            <Text style={styles.capturePrimaryActionText}>{captureRunning ? "停止自動判單" : "開始自動判單"}</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.captureFootnote}>開始後請在 Android 系統視窗選擇 Uber Eats。騎乘中請勿操作手機。</Text>
+      </BottomSheet>
+
       <BottomSheet onClose={() => setSheet(null)} visible={sheet === "layers"}>
-        <Text style={styles.sheetTitle}>圖層與顯示</Text>
-        <Text style={styles.sheetSubtitle}>自訂地圖上顯示的設備種類與深淺模式</Text>
+        <Text style={styles.sheetTitle}>地圖圖層</Text>
+        <Text style={styles.sheetSubtitle}>只顯示你需要的公開設備，減少地圖雜訊。</Text>
         <View style={styles.layerCards}>
-          {(Object.keys(visibleLayers) as EnforcementPoint["type"][]).map((type) => {
-            const active = visibleLayers[type];
+          {(Object.keys(TYPE_LABEL) as EnforcementPoint["type"][]).map((type) => {
+            const enabled = visibleLayers[type];
             return (
               <Pressable
                 key={type}
-                onPress={() => setVisibleLayers((prev) => ({ ...prev, [type]: !prev[type] }))}
-                style={[styles.layerCard, active && styles.layerCardActive]}
+                onPress={() => setVisibleLayers((current) => ({ ...current, [type]: !current[type] }))}
+                style={[styles.layerCard, enabled && styles.layerCardActive]}
               >
                 <View style={[styles.layerDot, { backgroundColor: TYPE_COLOR[type] }]} />
                 <Text style={styles.layerCardTitle}>{TYPE_LABEL[type]}</Text>
-                <Text style={styles.layerCardState}>{active ? "顯示中" : "已隱藏"}</Text>
+                <Text style={styles.layerCardState}>{enabled ? "顯示中" : "已隱藏"}</Text>
               </Pressable>
             );
           })}
         </View>
         <View style={styles.settingRow}>
           <View>
-            <Text style={styles.settingTitle}>深色地圖模式</Text>
-            <Text style={styles.settingDescription}>夜晚或暗處騎乘時減少反光與刺眼</Text>
+            <Text style={styles.settingTitle}>亮色地圖主題</Text>
+            <Text style={styles.settingDescription}>白天強光環境可切換使用</Text>
           </View>
           <Switch
-            onValueChange={setDarkMap}
-            thumbColor={darkMap ? COLORS.green : "#f4f3f4"}
-            trackColor={{ false: "#767577", true: "rgba(57,224,121,0.4)" }}
-            value={darkMap}
+            onValueChange={(value) => setDarkMap(!value)}
+            thumbColor="#ffffff"
+            trackColor={{ false: "#66717d", true: COLORS.greenDark }}
+            value={!darkMap}
           />
         </View>
       </BottomSheet>
 
       <BottomSheet onClose={() => setSheet(null)} visible={sheet === "destination"}>
-        <Text style={styles.sheetTitle}>目的地導航</Text>
-        <Text style={styles.sheetSubtitle}>輸入地址搜尋，或在主地圖直接長按任意點</Text>
+        <Text style={styles.sheetTitle}>設定目的地</Text>
+        <Text style={styles.sheetSubtitle}>輸入地址，或關閉面板後長按地圖選點。</Text>
         <TextInput
           onChangeText={(text) => { setDestinationText(text); setDestination(null); }}
           onSubmitEditing={() => void locateAddress()}
-          placeholder="輸入地址或地標，例如：板橋車站"
-          placeholderTextColor="#6f8190"
+          placeholder="例如：輔仁大學正門"
+          placeholderTextColor="#7c8a94"
           returnKeyType="search"
           style={styles.destinationInput}
           value={destinationText}
@@ -638,6 +836,7 @@ const styles = StyleSheet.create({
   roundButtonActive: { borderColor: "rgba(57,224,121,0.38)" },
   roundButtonIcon: { color: "#f4f8f6", fontSize: 22, fontWeight: "900" },
   roundButtonIconActive: { color: COLORS.green },
+  radarButtonText: { color: "#f4f8f6", fontSize: 17, fontWeight: "900" },
   bottomControls: {
     position: "absolute",
     left: 16,
@@ -706,6 +905,16 @@ const styles = StyleSheet.create({
   nearestCopy: { flex: 1 },
   nearestLabel: { color: "#aab8b0", fontSize: 8, fontWeight: "700" },
   nearestValue: { marginTop: 2, color: "#f1f6f3", fontSize: 11, fontWeight: "800" },
+  mapMarker: {
+    width: 18,
+    height: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.94)",
+  },
+  mapMarkerCore: { width: 6, height: 6, borderRadius: 6 },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.50)" },
   sheet: {
     paddingHorizontal: 20,
@@ -722,6 +931,80 @@ const styles = StyleSheet.create({
   menuItem: { width: "33.333%", minHeight: 82, alignItems: "center", justifyContent: "center", gap: 7 },
   menuItemIcon: { color: "#f5f7f8", fontSize: 25, fontWeight: "800" },
   menuItemLabel: { color: "#e5e9ed", fontSize: 11, fontWeight: "800" },
+  captureStatusCard: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    borderRadius: 17,
+    backgroundColor: "#111a23",
+  },
+  captureStatusDot: { width: 11, height: 11, borderRadius: 11, backgroundColor: "#7f8d96" },
+  captureStatusDotRunning: { backgroundColor: COLORS.green },
+  captureStatusDotError: { backgroundColor: COLORS.red },
+  captureStatusCopy: { flex: 1 },
+  captureStatusTitle: { color: "#f4f7f5", fontSize: 13, fontWeight: "900" },
+  captureStatusMessage: { marginTop: 3, color: "#9facb5", fontSize: 10, lineHeight: 15 },
+  overlayPermissionButton: {
+    marginTop: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "rgba(255,203,71,0.34)",
+    borderRadius: 15,
+    backgroundColor: "rgba(255,203,71,0.08)",
+  },
+  overlayPermissionTitle: { color: COLORS.yellow, fontSize: 12, fontWeight: "900" },
+  overlayPermissionDescription: { marginTop: 3, color: "#b8b2a0", fontSize: 9, lineHeight: 14 },
+  notificationAccessButton: {
+    marginTop: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "rgba(99,179,237,0.34)",
+    borderRadius: 15,
+    backgroundColor: "rgba(99,179,237,0.08)",
+  },
+  notificationAccessEnabled: {
+    borderColor: "rgba(57,224,121,0.34)",
+    backgroundColor: "rgba(57,224,121,0.08)",
+  },
+  notificationAccessTitle: { color: "#78bdf2", fontSize: 12, fontWeight: "900" },
+  notificationAccessTitleEnabled: { color: COLORS.green },
+  notificationAccessDescription: { marginTop: 3, color: "#aab5bd", fontSize: 9, lineHeight: 14 },
+  captureUnavailableCard: {
+    marginTop: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.035)",
+  },
+  captureUnavailableTitle: { color: "#e8edef", fontSize: 11, fontWeight: "900" },
+  captureUnavailableText: { marginTop: 4, color: "#9da8af", fontSize: 9, lineHeight: 14 },
+  lastDetectionCard: {
+    marginTop: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderRadius: 17,
+    backgroundColor: "#0e171f",
+  },
+  lastDetectionDecision: { fontSize: 17, fontWeight: "900" },
+  lastDetectionOffer: { marginTop: 6, color: "#f7faf8", fontSize: 14, fontWeight: "900" },
+  lastDetectionMetrics: { marginTop: 5, color: "#a9b5ae", fontSize: 9, lineHeight: 14 },
+  captureActions: { marginTop: 14 },
+  capturePrimaryAction: {
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    backgroundColor: COLORS.green,
+  },
+  captureStopAction: { backgroundColor: COLORS.red },
+  captureActionDisabled: { opacity: 0.36 },
+  capturePrimaryActionText: { color: "#07160d", fontSize: 13, fontWeight: "900" },
+  captureFootnote: { marginTop: 9, color: "#8f9ba4", fontSize: 9, lineHeight: 14, textAlign: "center" },
   layerCards: { flexDirection: "row", gap: 9, marginTop: 18 },
   layerCard: {
     flex: 1,
