@@ -200,7 +200,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     return () => {
       locationSubscriptionRef.current?.remove();
       Speech.stop();
-      void KeepAwake.deactivateKeepAwake("order-radar-navigation");
+      KeepAwake.deactivateKeepAwake("order-radar-navigation").catch(() => {});
     };
   }, [handleLocation]);
 
@@ -340,7 +340,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     setSpeedKmh(0);
     setStatus("安全提醒已停止");
     Speech.stop();
-    await KeepAwake.deactivateKeepAwake("order-radar-navigation");
+    await KeepAwake.deactivateKeepAwake("order-radar-navigation").catch(() => {});
   };
 
   const toggleTracking = () => void (tracking ? stopTracking() : startForegroundTracking());
