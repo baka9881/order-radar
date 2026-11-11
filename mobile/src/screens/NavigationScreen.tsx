@@ -17,7 +17,6 @@ import * as KeepAwake from "expo-keep-awake";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import * as Speech from "expo-speech";
-import MapView, { Marker, type LongPressEvent, type Region } from "react-native-maps";
 import { BACKGROUND_LOCATION_TASK } from "../background-location";
 import {
   distanceKm,
@@ -42,12 +41,13 @@ import {
   type CaptureStatus,
   type DetectedOrder,
 } from "../order-capture";
+import { RadarMap, type MapRegion, type RadarMapHandle } from "../components/RadarMap";
 import { saveAlertPoints } from "../storage";
 import { COLORS } from "../theme";
 import type { CalculatorSettings, Coordinates, EnforcementPoint, HistoryItem } from "../types";
 
 const DEFAULT_CENTER: Coordinates = { latitude: 25.036, longitude: 121.432 };
-const INITIAL_REGION: Region = {
+const INITIAL_REGION: MapRegion = {
   ...DEFAULT_CENTER,
   latitudeDelta: 0.12,
   longitudeDelta: 0.08,
@@ -112,7 +112,7 @@ function detectionLabel(signal: DetectedOrder["signal"]) {
 }
 
 export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onOpenSettings, settings }: Props) {
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<RadarMapHandle | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const lastAlertIdRef = useRef<string | null>(null);
   const lastPointRefreshRef = useRef<Coordinates | null>(null);
@@ -358,8 +358,7 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
     await Linking.openURL(url);
   };
 
-  const setMapDestination = (event: LongPressEvent) => {
-    const next = event.nativeEvent.coordinate;
+  const setMapDestination = (next: Coordinates) => {
     setDestination(next);
     setDestinationText(`${next.latitude.toFixed(6)}, ${next.longitude.toFixed(6)}`);
     setStatus("目的地已設定；點右側箭頭開始導航");
@@ -465,32 +464,15 @@ export function NavigationScreen({ history, onOpenCalculator, onOpenHistory, onO
 
   return (
     <View style={styles.screen}>
-      <MapView
+      <RadarMap
+        darkMap={darkMap}
+        destination={destination}
         initialRegion={INITIAL_REGION}
-        mapType="standard"
         onLongPress={setMapDestination}
         ref={mapRef}
-        showsCompass={false}
-        showsMyLocationButton={false}
-        showsUserLocation
-        style={StyleSheet.absoluteFillObject}
-        userInterfaceStyle={darkMap ? "dark" : "light"}
-      >
-        {visiblePoints.map((point) => (
-          <Marker
-            coordinate={point}
-            description={[point.direction, point.speedLimit ? `速限 ${point.speedLimit}` : "", point.source].filter(Boolean).join(" · ")}
-            key={point.id}
-            title={`${TYPE_LABEL[point.type]} · ${point.title}`}
-            tracksViewChanges={false}
-          >
-            <View style={[styles.mapMarker, { borderColor: TYPE_COLOR[point.type] }]}>
-              <View style={[styles.mapMarkerCore, { backgroundColor: TYPE_COLOR[point.type] }]} />
-            </View>
-          </Marker>
-        ))}
-        {destination ? <Marker coordinate={destination} pinColor={COLORS.blue} title="目的地" /> : null}
-      </MapView>
+        style={StyleSheet.absoluteFill}
+        visiblePoints={visiblePoints}
+      />
 
       <View pointerEvents="box-none" style={styles.topArea}>
         <View style={styles.summaryCard}>
@@ -905,16 +887,6 @@ const styles = StyleSheet.create({
   nearestCopy: { flex: 1 },
   nearestLabel: { color: "#aab8b0", fontSize: 8, fontWeight: "700" },
   nearestValue: { marginTop: 2, color: "#f1f6f3", fontSize: 11, fontWeight: "800" },
-  mapMarker: {
-    width: 18,
-    height: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.94)",
-  },
-  mapMarkerCore: { width: 6, height: 6, borderRadius: 6 },
   backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.50)" },
   sheet: {
     paddingHorizontal: 20,
